@@ -259,7 +259,14 @@ fn watch<T: 'static>(
                 Either::Right(_) => {
                     if let Some(shown) = progress.describe() {
                         let text = format!("{doing}… {shown}");
-                        if cx.update(|cx| show_notice(&store, text, cx)).is_err() {
+                        // Only the notice: an error that came up meanwhile stays shown.
+                        let updated = cx.update(|cx| {
+                            store.update(cx, |s, cx| {
+                                s.notice = Some(text);
+                                cx.notify();
+                            })
+                        });
+                        if updated.is_err() {
                             return;
                         }
                     }
@@ -366,6 +373,8 @@ pub struct LocalFile {
 }
 
 /// Checks that every path is a regular file, and reads its name and size.
+/// A relative path is made absolute, so that it means the same file when
+/// typed into a terminal on this machine.
 pub fn local_files(paths: &[PathBuf]) -> Result<Vec<LocalFile>> {
     if paths.is_empty() {
         bail!("no files to upload");
@@ -373,6 +382,7 @@ pub fn local_files(paths: &[PathBuf]) -> Result<Vec<LocalFile>> {
     paths
         .iter()
         .map(|path| {
+            let path = &std::path::absolute(path).unwrap_or_else(|_| path.clone());
             let meta = std::fs::metadata(path).with_context(|| format!("reading {}", path.display()))?;
             if !meta.is_file() {
                 bail!("{} is not a file, and only files can be uploaded", path.display());
