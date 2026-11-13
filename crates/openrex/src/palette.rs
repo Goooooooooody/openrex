@@ -55,6 +55,8 @@ pub enum Kind {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Suggest {
     None,
+    /// Sessions, tabs, and panes the typed text could name, from the server.
+    Targets,
     /// Directories, and files too if `files`, below the typed path, listed
     /// by the terminal `block_id`.
     Paths {

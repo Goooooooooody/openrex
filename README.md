@@ -42,7 +42,14 @@ OpenRex is not made by or affiliated with Superlogical, the makers of Rex.
   client's label while it runs, and sign the server out of Tailscale or
   rename it there. Session names resolve through the server, so any label or
   ID ending works. On quit, OpenRex gives up the panes it sized so another
-  client can size them.
+  client can size them. **Go to Target…** completes sessions, tabs, and panes
+  by label, tab number, or ID as you type (`target.complete`); the **Server**
+  and **Session API Reference** list every method; **Stop Server…** asks
+  before it stops anything; **Stop Following Other Sessions** detaches from
+  background sessions; and **System Permissions** shows what macOS lets a Mac
+  server use. When files dropped on a pane are on the server's own machine,
+  OpenRex checks the server can read them before typing their paths, and
+  uploads them otherwise.
 - **Blocks that aren't terminals**, such as Rex's onboarding walkthrough,
   show as a card you can restart or close.
 - **Links**: web links and OSC 8 hyperlinks open with Ctrl+click.

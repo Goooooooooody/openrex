@@ -77,6 +77,41 @@ pub(crate) fn perform(
             }
         }
         "session.clients" => Some(session_clients(ws, cx)),
+        "client.api.reference" => Some(api_reference(ws, false, cx)),
+        "session.api.reference" => Some(api_reference(ws, true, cx)),
+        "client.target.go" => Some(match arg(args, "target") {
+            Some(query) => {
+                go_to_target(ws, query.to_string(), cx);
+                Ok(Value::Null)
+            }
+            None => {
+                let mut p = Palette::input("Go to Target", "client.target.go", json!({}), "target", "")
+                    .placeholder("A session, tab, or pane: a label, a tab number, or the end of an ID");
+                p.suggest = crate::palette::Suggest::Targets;
+                ws.palette = Some(p);
+                ws.refresh_suggestions(cx);
+                Ok(Value::Null)
+            }
+        }),
+        "client.server.stop" => Some(stop_server(ws, args, cx)),
+        "session.detach_others" => {
+            let current = ws.store.read(cx).current.clone();
+            ws.store.update(cx, |s, cx| {
+                let others: Vec<String> = s.views.keys().filter(|id| Some(*id) != current.as_ref()).cloned().collect();
+                let n = others.len();
+                for id in others {
+                    s.request("session.detach", json!({"session_id": id}), cx);
+                    s.forget_view(&id, cx);
+                }
+                s.notice = Some(match n {
+                    0 => "No other session was being followed".into(),
+                    1 => "Stopped following 1 other session. It keeps running.".into(),
+                    n => format!("Stopped following {n} other sessions. They keep running."),
+                });
+            });
+            ok()
+        }
+        "client.permissions" => Some(privacy_status(ws, cx)),
         "client.set_label" => match args.get("label").and_then(Value::as_str) {
             Some(label) => {
                 let label = label.to_string();
@@ -243,7 +278,11 @@ fn block_methods(ws: &mut Workspace, args: &Value, target: &Target, cx: &mut Con
     if let Some(method) = arg(args, "method").map(str::to_string) {
         ws.palette = Some(Palette::pick(method.clone(), Vec::new()).empty("Calling…"));
         cx.spawn(async move |this, cx| {
-            let result = control.block_call(&method, &session, &block, json!({})).await;
+            // block.method calls any block's method by its short name, the
+            // same way for every kind of block.
+            let short = method.rsplit('.').next().unwrap_or(&method).to_string();
+            let payload = json!({"session_id": session, "block_id": block, "method": short, "args": {}});
+            let result = control.call("block.method", payload).await;
             this.update(cx, |ws, cx| {
                 let lines = match result {
                     Ok(v) => result_lines(&v),
@@ -396,6 +435,203 @@ fn session_clients(ws: &mut Workspace, cx: &mut Context<Workspace>) -> Outcome {
     Ok(Value::Null)
 }
 
+/// API Reference: every method the server offers (`help.all`), or this
+/// session's methods and its blocks' (`session.help`). Choosing one copies
+/// its name.
+fn api_reference(ws: &mut Workspace, session_only: bool, cx: &mut Context<Workspace>) -> Outcome {
+    let Some(control) = ws.store.read(cx).control() else { return Ok(Value::Null) };
+    let session = ws.store.read(cx).current.clone();
+    let title = if session_only { "Session API" } else { "Server API" };
+    let (method, payload) = match (session_only, session) {
+        (true, Some(s)) => ("session.help", json!({"session_id": s})),
+        (true, None) => return Err(("conflict".into(), "no session is open".into())),
+        (false, _) => ("help.all", json!({})),
+    };
+    ws.palette = Some(Palette::pick(title, Vec::new()).empty("Asking the server…"));
+    cx.spawn(async move |this, cx| {
+        let result = control.call(method, payload).await;
+        this.update(cx, |ws, cx| {
+            let items = result.map(|v| reference_items(&v)).unwrap_or_default();
+            if let Some(p) = ws.palette.as_mut().filter(|p| p.title == title) {
+                p.items = items;
+                p.empty = "The server described no methods".into();
+            }
+            cx.notify();
+        })
+        .ok();
+    })
+    .detach();
+    Ok(Value::Null)
+}
+
+/// The methods in a `help.all` or `session.help` result, wherever they sit:
+/// a list of methods, or block types each with their own.
+fn reference_items(v: &Value) -> Vec<Item> {
+    let mut items = Vec::new();
+    let mut add = |m: &Value, group: &str| {
+        let Some(name) = m["name"].as_str() else { return };
+        let description = m["description"].as_str().unwrap_or("").to_string();
+        items
+            .push(Item::new(name, "pane.info_copy", json!({"text": name})).detail(description).hint(group.to_string()));
+    };
+    for m in v["methods"].as_array().into_iter().flatten() {
+        add(m, "");
+    }
+    for t in v["block_types"].as_array().into_iter().flatten() {
+        let creator = t["creator"].as_str().unwrap_or("");
+        for m in t["methods"].as_array().into_iter().flatten() {
+            add(m, creator);
+        }
+    }
+    items
+}
+
+/// Lists what the typed text could name, from `target.complete`.
+pub fn refresh_targets(ws: &mut Workspace, cx: &mut Context<Workspace>) {
+    let Some(p) = &ws.palette else { return };
+    let prefix = p.query.clone();
+    let Some(control) = ws.store.read(cx).control() else { return };
+    let mut payload = json!({"kinds": ["session", "window", "block"], "prefix": prefix});
+    if let Some(s) = ws.store.read(cx).current.clone() {
+        payload["context"] = json!({"session_id": s});
+    }
+    cx.spawn(async move |this, cx| {
+        let result = control.call("target.complete", payload).await;
+        this.update(cx, |ws, cx| {
+            let Some(p) = ws.palette.as_mut().filter(|p| p.query == prefix && p.title == "Go to Target") else {
+                return;
+            };
+            p.items = result.map(|v| target_items(&v)).unwrap_or_default();
+            p.selected = 0;
+            cx.notify();
+        })
+        .ok();
+    })
+    .detach();
+}
+
+fn target_items(v: &Value) -> Vec<Item> {
+    v["completions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| {
+            let value = c["value"].as_str()?;
+            let t = &c["target"];
+            let kind = t["kind"].as_str()?;
+            if !matches!(kind, "session" | "window" | "block") {
+                return None;
+            }
+            let label = t["label"].as_str().unwrap_or("");
+            let detail = [kind, label, t["where"].as_str().unwrap_or("")]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ");
+            Some(Item::new(value, "client.target.go", json!({"target": value})).detail(detail))
+        })
+        .collect()
+}
+
+/// Goes to whatever a name resolves to: a session, a tab, or a pane.
+fn go_to_target(ws: &mut Workspace, query: String, cx: &mut Context<Workspace>) {
+    let mut payload = json!({"kinds": ["session", "window", "block"], "queries": [query]});
+    if let Some(s) = ws.store.read(cx).current.clone() {
+        payload["context"] = json!({"session_id": s});
+    }
+    ws.store.update(cx, |s, cx| {
+        s.call("target.resolve", payload, cx, move |s, r, cx| {
+            let result =
+                r.ok().and_then(|v| v["results"].as_array().and_then(|a| a.first().cloned())).unwrap_or(Value::Null);
+            if result["status"].as_str() != Some("resolved") {
+                let why = result["reason"].as_str().filter(|r| !r.is_empty()).unwrap_or("nothing matches");
+                s.error = Some(format!("{query}: {why}"));
+                return;
+            }
+            let t = &result["target"];
+            let Some(session) = t["session_id"].as_str().map(str::to_string) else { return };
+            s.select_session(session.clone(), cx);
+            match (t["kind"].as_str(), t["window_id"].as_str(), t["block_id"].as_str()) {
+                (Some("block"), _, Some(block)) => {
+                    s.request("session.focus_block", json!({"session_id": session, "block_id": block}), cx)
+                }
+                (Some("window"), Some(window), _) => {
+                    s.request("session.focus_window", json!({"session_id": session, "window_id": window}), cx)
+                }
+                _ => {}
+            }
+        });
+    });
+}
+
+/// Stop Server…: asks first, offering to stop only if nothing uses it.
+fn stop_server(ws: &mut Workspace, args: &Value, cx: &mut Context<Workspace>) -> Outcome {
+    match args.get("mode").and_then(Value::as_str) {
+        Some(mode) => {
+            let if_idle = mode != "now";
+            ws.store.update(cx, |s, cx| {
+                s.call("server.stop", json!({"if_idle": if_idle}), cx, |s, r, _| {
+                    if let Err(e) = r {
+                        s.error = Some(match e.code.as_str() {
+                            "conflict" => "The server is in use, so it kept running".into(),
+                            _ => format!("server.stop: {}", e.message),
+                        });
+                    }
+                });
+            });
+        }
+        None => {
+            ws.palette = Some(Palette::pick(
+                "Stop the Rex server?",
+                vec![
+                    Item::new("Stop it if nothing is using it", "client.server.stop", json!({"mode": "if_idle"}))
+                        .detail("Keeps running if any session or other client is there"),
+                    Item::new("Stop it now", "client.server.stop", json!({"mode": "now"}))
+                        .detail("Ends every session and every program in them"),
+                    Item::new("Cancel", "client.palette.close", Value::Null),
+                ],
+            ));
+        }
+    }
+    Ok(Value::Null)
+}
+
+/// System Permissions: what macOS lets the server use. Empty on other
+/// systems, which have no such permissions.
+fn privacy_status(ws: &mut Workspace, cx: &mut Context<Workspace>) -> Outcome {
+    let Some(control) = ws.store.read(cx).control() else { return Ok(Value::Null) };
+    ws.palette = Some(Palette::pick("System Permissions", Vec::new()).empty("Asking the server…"));
+    cx.spawn(async move |this, cx| {
+        let result = control.call("server.apple.privacy_status", json!({})).await;
+        this.update(cx, |ws, cx| {
+            let Some(p) = ws.palette.as_mut().filter(|p| p.title == "System Permissions") else { return };
+            match result {
+                Ok(v) => {
+                    p.items = v["services"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|s| {
+                            let service = s["service"].as_str()?;
+                            let status = s["status"].as_str().unwrap_or("unknown");
+                            Some(
+                                Item::new(service, "pane.info_copy", json!({"text": format!("{service}: {status}")}))
+                                    .detail(status),
+                            )
+                        })
+                        .collect();
+                    p.empty = "The server doesn't run on macOS, so there are no permissions to grant".into();
+                }
+                Err(e) => p.empty = format!("The server can't say: {}", e.message),
+            }
+            cx.notify();
+        })
+        .ok();
+    })
+    .detach();
+    Ok(Value::Null)
+}
+
 /// Looks a session up by any name the server understands (a label, the end
 /// of an ID, ...) and shows it.
 pub fn resolve_session(ws: &mut Workspace, query: String, cx: &mut Context<Workspace>) {
@@ -420,6 +656,24 @@ pub fn resolve_session(ws: &mut Workspace, query: String, cx: &mut Context<Works
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lists_reference_and_target_completions() {
+        let help = json!({"methods": [{"name": "session.view", "description": "Get the view."}],
+            "block_types": [{"creator": "com.x.term", "methods": [{"name": "com.x.term.write", "description": "Type."}]}]});
+        let items = reference_items(&help);
+        assert_eq!(items.iter().map(|i| i.label.as_str()).collect::<Vec<_>>(), ["session.view", "com.x.term.write"]);
+        assert_eq!(items[1].hint, "com.x.term");
+        let done = json!({"completions": [
+            {"value": "work", "form": "label", "target": {"kind": "session", "session_id": "s", "label": "work"}},
+            {"value": "2", "form": "ordinal", "target": {"kind": "window", "session_id": "s", "window_id": "w", "label": "build", "where": "window 2"}},
+            {"value": "abc123", "form": "id", "target": {"kind": "client", "client_id": "c", "label": ""}}
+        ]});
+        let items = target_items(&done);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[1].detail, "window · build · window 2");
+        assert_eq!(items[0].args["target"], "work");
+    }
 
     #[test]
     fn flattens_results_into_lines() {

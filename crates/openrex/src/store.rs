@@ -403,6 +403,13 @@ impl Store {
         .detach();
     }
 
+    /// Forgets a session's layout and panes after detaching from it. Showing
+    /// it again attaches again.
+    pub fn forget_view(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.views.remove(id);
+        self.panes.retain(|_, pane| pane.read(cx).session_id != id);
+    }
+
     /// Shows a session, attaching to it first if this is the first time.
     pub fn select_session(&mut self, id: String, cx: &mut Context<Self>) {
         self.current = Some(id.clone());
@@ -567,7 +574,13 @@ impl Store {
 
     /// Asks for the session view again, as after a missed change.
     pub fn refresh_all(&mut self, cx: &mut Context<Self>) {
-        self.refresh_sessions(cx);
+        // attach_all also renews the subscription to every session's events,
+        // in case the connection missed some.
+        self.call("session.attach_all", json!({"event_scope": "all"}), cx, |this, r, _| {
+            if let Ok(v) = r {
+                this.sessions = parse_sessions(&v["sessions"]);
+            }
+        });
         let ids: Vec<String> = self.views.keys().cloned().collect();
         for id in ids {
             self.fetch_view(id, cx);

@@ -994,6 +994,10 @@ impl Workspace {
     /// Lists the entries below the typed path, from the terminal's machine.
     pub fn refresh_suggestions(&mut self, cx: &mut Context<Self>) {
         let Some(p) = &self.palette else { return };
+        if p.suggest == Suggest::Targets {
+            crate::extras::refresh_targets(self, cx);
+            return;
+        }
         let Suggest::Paths { session_id, block_id, files } = p.suggest.clone() else { return };
         let query = p.query.clone();
         let (dir, prefix) = match query.rfind('/') {

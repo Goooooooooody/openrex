@@ -190,7 +190,7 @@ pub(crate) fn start_upload(
             if matches!(endpoint, Endpoint::Unix(_)) && !host_id.is_empty() {
                 let server = control.call("server.status", json!({})).await.ok();
                 let server_host = server.as_ref().and_then(|v| v["host_id"].as_str());
-                if sees_local_files(&endpoint, server_host, &host_id) {
+                if sees_local_files(&endpoint, server_host, &host_id) && server_can_read(&control, &files).await {
                     return anyhow::Ok(Sent::Local(typed_paths(&files), files.len()));
                 }
             }
@@ -214,6 +214,26 @@ pub(crate) fn start_upload(
         }
         Err(e) => show_error(store, format!("pane.upload: {e:#}"), cx),
     });
+}
+
+/// Whether the server can open every file, so typing their paths works.
+/// On macOS, privacy controls can keep the server from folders such as
+/// Desktop; `server.apple.grant_file_access` reports that without a sandbox
+/// token. Other systems don't have the method, and there the server reads
+/// what its user can.
+async fn server_can_read(control: &Control, files: &[LocalFile]) -> bool {
+    let request: Vec<_> = files.iter().map(|f| json!({"path": f.path.to_string_lossy()})).collect();
+    match control.call("server.apple.grant_file_access", json!({"files": request})).await {
+        Ok(v) => all_readable(&v),
+        Err(_) => true,
+    }
+}
+
+/// Reads a `grant_file_access` result: true when no file was denied.
+fn all_readable(v: &Value) -> bool {
+    v["files"]
+        .as_array()
+        .is_some_and(|files| files.iter().all(|f| matches!(f["access"].as_str(), Some("readable") | Some("granted"))))
 }
 
 /// Types text into a terminal as a paste.
@@ -603,6 +623,18 @@ mod tests {
         assert_eq!(safe_name("a\nb"), "ab");
         assert_eq!(safe_name(".."), "download");
         assert_eq!(safe_name(""), "download");
+    }
+
+    #[test]
+    fn trusts_a_file_access_report_only_when_nothing_was_denied() {
+        assert!(all_readable(
+            &json!({"files": [{"path": "/a", "access": "readable"}, {"path": "/b", "access": "granted"}]})
+        ));
+        assert!(!all_readable(
+            &json!({"files": [{"path": "/a", "access": "readable"}, {"path": "/b", "access": "denied"}]})
+        ));
+        assert!(!all_readable(&json!({"files": [{"path": "/a", "access": "later"}]})));
+        assert!(!all_readable(&json!({})));
     }
 
     #[test]
