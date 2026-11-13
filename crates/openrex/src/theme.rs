@@ -329,7 +329,7 @@ fn merge(mut themes: Vec<TermTheme>, files: Vec<TermTheme>) -> Vec<TermTheme> {
     let builtin_count = themes.len();
     // Your own files replace a built-in theme of the same name in place.
     for file in files.iter().filter(|t| t.source == Source::User) {
-        if let Some(slot) = themes[..builtin_count].iter_mut().find(|t| key(t) == key(file)) {
+        if let Some(slot) = themes[..builtin_count].iter_mut().find(|t| key(&**t) == key(file)) {
             *slot = file.clone();
         }
     }
@@ -533,6 +533,9 @@ struct State {
     /// connection that sent it: a new connection sends it again.
     sent: HashSet<String>,
     client_id: Option<String>,
+    /// Counts theme changes, so calls still sending an older theme stop
+    /// rather than overwrite a newer one.
+    generation: u64,
 }
 
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
@@ -544,6 +547,7 @@ static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| {
         settings: None,
         sent: HashSet::new(),
         client_id: None,
+        generation: 0,
     })
 });
 
@@ -616,9 +620,13 @@ pub(crate) fn sync(ws: &mut Workspace, cx: &mut Context<Workspace>) {
         return;
     }
     let args = s.theme.set_theme_args();
+    let generation = s.generation;
     drop(s);
-    cx.spawn(async move |_, _| {
+    cx.spawn(async move |_this, _cx| {
         for (session, block) in fresh {
+            if state().generation != generation {
+                return;
+            }
             if let Err(e) = control.block_call(SET_THEME, &session, &block, args.clone()).await {
                 log::warn!("{SET_THEME} on {block}: {}", e.message);
             }
@@ -637,6 +645,7 @@ fn apply(theme: TermTheme, ws: &mut Workspace, cx: &mut Context<Workspace>) {
         s.theme = theme;
         s.send = true;
         s.sent.clear();
+        s.generation += 1;
     }
     sync(ws, cx);
     remember("theme", json!(name));
