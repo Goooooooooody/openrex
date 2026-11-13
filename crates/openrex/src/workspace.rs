@@ -63,6 +63,7 @@ pub struct Workspace {
     reported_focus: Option<String>,
     window_title: String,
     pub(crate) palette: Option<Palette>,
+    pub(crate) find: crate::find::FindBar,
     /// The key modes entered with `client.mode.enter`, innermost last.
     pub(crate) modes: Vec<String>,
     /// The keys of an unfinished key sequence.
@@ -105,6 +106,7 @@ impl Workspace {
             reported_focus: None,
             window_title: String::new(),
             palette: None,
+            find: Default::default(),
             modes: Vec::new(),
             key_prefix: Vec::new(),
             client_actions: keymap::client_actions(),
@@ -181,6 +183,11 @@ impl Workspace {
         if self.palette.is_some() {
             cx.stop_propagation();
             self.palette_key(ev, window, cx);
+            cx.notify();
+            return;
+        }
+        if self.find.open && self.key_prefix.is_empty() && crate::find::on_key(self, ev, cx) {
+            cx.stop_propagation();
             cx.notify();
             return;
         }
@@ -547,7 +554,8 @@ impl Workspace {
                         .h(relative(r[3]))
                         .border_1()
                         .border_color(border)
-                        .child(pane.clone()),
+                        .child(pane.clone())
+                        .when_some_el(crate::find::render_bar(&self.find, &block_id, pane, cx)),
                 );
             }
         }
@@ -796,6 +804,7 @@ impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.drain_requests(window, cx);
         self.sync_focus(window, cx);
+        crate::find::update(self, window, cx);
         let t = theme();
         let store = self.store.read(cx);
         let font = SharedString::from(store.settings.font_family.clone());

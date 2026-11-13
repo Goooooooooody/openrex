@@ -41,7 +41,7 @@ pub struct Pane {
     pub focus: FocusHandle,
     control: Control,
     settings: Settings,
-    mirror: Option<Mirror>,
+    pub(crate) mirror: Option<Mirror>,
     error: Option<String>,
     /// Where the grid's top-left corner was last drawn.
     origin: Point<Pixels>,
@@ -53,6 +53,8 @@ pub struct Pane {
     copy_on_release: bool,
     reported_cell: Option<(i32, i32)>,
     scroll_remainder: f32,
+    /// The search the find bar runs in this terminal.
+    pub(crate) find: Option<crate::find::Finder>,
     _stream: Task<()>,
 }
 
@@ -63,6 +65,7 @@ struct PaintData {
     font: Font,
     focused: bool,
     note: Option<String>,
+    marks: Vec<crate::find::Mark>,
 }
 
 impl Pane {
@@ -148,6 +151,7 @@ impl Pane {
             copy_on_release: false,
             reported_cell: None,
             scroll_remainder: 0.0,
+            find: None,
             _stream: stream,
         }
     }
@@ -440,7 +444,8 @@ impl Pane {
             (None, None) if frame.is_none() => Some("connecting…".to_string()),
             _ => None,
         };
-        PaintData { frame, metrics, origin, font, focused: self.focus.is_focused(window), note }
+        let marks = crate::find::marks(self);
+        PaintData { frame, metrics, origin, font, focused: self.focus.is_focused(window), note, marks }
     }
 }
 
@@ -603,7 +608,7 @@ fn styled(base: &Font, bold: bool, italic: bool) -> Font {
 }
 
 fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut App) {
-    let PaintData { frame, metrics, origin, font, focused, note } = data;
+    let PaintData { frame, metrics, origin, font, focused, note, marks } = data;
     let Metrics { cell_w, line_h, font_size, .. } = metrics;
     let bg = frame.as_ref().map(|f| hsla(f.bg)).unwrap_or_else(|| hsla(Rgb(0x16, 0x16, 0x1e)));
     let fg = frame.as_ref().map(|f| hsla(f.fg)).unwrap_or_else(|| hsla(Rgb(0xc0, 0xca, 0xf5)));
@@ -622,6 +627,7 @@ fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut 
                         hsla(span.color),
                     ));
                 }
+                crate::find::paint_row(&marks, row, origin.x, cell_w, top, line_h, window);
                 for span in &line.spans {
                     let mut color = hsla(span.fg);
                     if span.faint {

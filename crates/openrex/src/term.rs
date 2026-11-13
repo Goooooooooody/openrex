@@ -334,6 +334,17 @@ impl Mirror {
         self.has_selection
     }
 
+    /// The engine's terminal, for features that read it, such as find.
+    pub(crate) fn terminal(&self) -> &Terminal {
+        &self.term
+    }
+
+    /// Rebuilds every line on the next frame, after something other than
+    /// this copy moved the view, as find does to show a match.
+    pub(crate) fn redraw(&mut self) {
+        self.stale = true;
+    }
+
     /// The selected text, as a terminal copies it: soft-wrapped lines joined
     /// and trailing blanks trimmed.
     pub fn selection_text(&self) -> Option<String> {
