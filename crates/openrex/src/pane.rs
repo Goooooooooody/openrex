@@ -14,6 +14,7 @@ use openrex_proto::data::{DataConn, DataError, TERMINAL_SUBPROTOCOL};
 use openrex_proto::Endpoint;
 use serde_json::{Value, json};
 
+use crate::graphics::Layer;
 use crate::keys::{mods_string, rex_key};
 use crate::store::Settings;
 use crate::term::{CursorShape, Frame, Line, Mirror, MirrorEvent, Rgb, Span, Underline};
@@ -53,6 +54,8 @@ pub struct Pane {
     copy_on_release: bool,
     reported_cell: Option<(i32, i32)>,
     scroll_remainder: f32,
+    /// Textures of the Kitty graphics images in view.
+    images: crate::graphics::Images,
     _stream: Task<()>,
 }
 
@@ -63,6 +66,7 @@ struct PaintData {
     font: Font,
     focused: bool,
     note: Option<String>,
+    images: crate::graphics::Layout,
 }
 
 impl Pane {
@@ -130,6 +134,7 @@ impl Pane {
             }
         })
         .detach();
+        cx.on_release(|pane, cx| pane.images.release(cx)).detach();
         Pane {
             session_id,
             block_id,
@@ -148,6 +153,7 @@ impl Pane {
             copy_on_release: false,
             reported_cell: None,
             scroll_remainder: 0.0,
+            images: Default::default(),
             _stream: stream,
         }
     }
@@ -440,7 +446,8 @@ impl Pane {
             (None, None) if frame.is_none() => Some("connecting…".to_string()),
             _ => None,
         };
-        PaintData { frame, metrics, origin, font, focused: self.focus.is_focused(window), note }
+        let images = self.images.layout(self.mirror.as_ref(), origin, &metrics, window);
+        PaintData { frame, metrics, origin, font, focused: self.focus.is_focused(window), note, images }
     }
 }
 
@@ -603,13 +610,14 @@ fn styled(base: &Font, bold: bool, italic: bool) -> Font {
 }
 
 fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut App) {
-    let PaintData { frame, metrics, origin, font, focused, note } = data;
+    let PaintData { frame, metrics, origin, font, focused, note, images } = data;
     let Metrics { cell_w, line_h, font_size, .. } = metrics;
     let bg = frame.as_ref().map(|f| hsla(f.bg)).unwrap_or_else(|| hsla(Rgb(0x16, 0x16, 0x1e)));
     let fg = frame.as_ref().map(|f| hsla(f.fg)).unwrap_or_else(|| hsla(Rgb(0xc0, 0xca, 0xf5)));
 
     window.with_content_mask(Some(ContentMask { bounds }), |window| {
         window.paint_quad(fill(bounds, bg));
+        images.paint(Layer::BelowBackground, window);
         let x_of = |col: u16| origin.x + cell_w * col as f32;
 
         if let Some(frame) = &frame {
@@ -622,6 +630,12 @@ fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut 
                         hsla(span.color),
                     ));
                 }
+            }
+            // Every row's backgrounds go down before any text, so an image
+            // below the text still covers the backgrounds of all its rows.
+            images.paint(Layer::BelowText, window);
+            for (row, line) in frame.lines.iter().enumerate() {
+                let top = origin.y + line_h * row as f32;
                 for span in &line.spans {
                     let mut color = hsla(span.fg);
                     if span.faint {
@@ -650,6 +664,7 @@ fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut 
                     }
                 }
             }
+            images.paint(Layer::AboveText, window);
 
             if let Some(cursor) = frame.cursor.filter(|c| (c.row as usize) < frame.lines.len()) {
                 let top = origin.y + line_h * cursor.row as f32;
