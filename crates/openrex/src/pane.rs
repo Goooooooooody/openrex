@@ -431,6 +431,7 @@ impl Pane {
             }
         }
 
+        let marks = crate::find::marks(self, window);
         let frame = self.mirror.as_mut().filter(|m| m.is_live()).and_then(|m| match m.frame() {
             Ok(frame) => Some(frame),
             Err(e) => {
@@ -444,7 +445,6 @@ impl Pane {
             (None, None) if frame.is_none() => Some("connecting…".to_string()),
             _ => None,
         };
-        let marks = crate::find::marks(self);
         PaintData { frame, metrics, origin, font, focused: self.focus.is_focused(window), note, marks }
     }
 }

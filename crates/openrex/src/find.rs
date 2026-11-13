@@ -142,7 +142,10 @@ fn target(ws: &mut Workspace, cx: &mut App) -> Option<Entity<Pane>> {
     let id = pane.read(cx).block_id.clone();
     if ws.find.block.as_ref() != Some(&id) {
         if let Some(old) = ws.find.block.take().and_then(|id| ws.store.read(cx).panes.get(&id).cloned()) {
-            old.update(cx, |old, _| old.find = None);
+            old.update(cx, |old, cx| {
+                old.find = None;
+                cx.notify();
+            });
         }
         ws.find.block = Some(id);
     }
@@ -371,11 +374,14 @@ impl Finder {
     /// Moves to the next older match, or the next newer one, wrapping
     /// around, and scrolls the view to show it.
     pub fn step(&mut self, mirror: &mut Mirror, older: bool) {
-        if self.jump.is_some() {
+        // A first match still to be chosen is this move: once the refresh
+        // chooses it, moving again would skip one.
+        let pending = self.jump.is_some();
+        if pending {
             self.jump = Some(older);
         }
         self.refresh(mirror);
-        if self.jump.is_none() && self.select(mirror.terminal(), older) {
+        if !pending && self.select(mirror.terminal(), older) {
             mirror.redraw();
         }
         self.recount(mirror.terminal());
@@ -539,12 +545,20 @@ fn has_case(term: &Terminal, m: &Selection, needle: &str) -> bool {
     }
 }
 
-/// A pane's highlights for this frame.
-pub(crate) fn marks(pane: &Pane) -> Vec<Mark> {
-    match (&pane.find, &pane.mirror) {
-        (Some(finder), Some(mirror)) if mirror.is_live() => finder.marks(mirror),
-        _ => Vec::new(),
+/// A pane's highlights for this frame. The search is fed first: the
+/// matches it holds point into the terminal as of the last feed, and lines
+/// that have since left the scrollback, or a terminal replaced by a new
+/// snapshot, would leave them pointing at freed memory. Feeding may also
+/// scroll the view to a first match, so call this before reading the frame.
+pub(crate) fn marks(pane: &mut Pane, window: &Window) -> Vec<Mark> {
+    let (Some(finder), Some(mirror)) = (&mut pane.find, &mut pane.mirror) else { return Vec::new() };
+    if !finder.shown || !mirror.is_live() {
+        return Vec::new();
     }
+    if finder.refresh(mirror) {
+        window.request_animation_frame();
+    }
+    finder.marks(mirror)
 }
 
 fn match_color() -> Hsla {
@@ -588,8 +602,8 @@ pub(crate) fn render_bar(bar: &FindBar, block_id: &str, pane: &Entity<Pane>, cx:
     if !bar.open || bar.block.as_deref() != Some(block_id) {
         return None;
     }
-    let (text, dim, accent, panel): (Hsla, Hsla, Hsla, Hsla) =
-        (rgb(0xc0caf5).into(), rgb(0x6b7394).into(), rgb(0x7aa2f7).into(), rgb(0x1a1b26).into());
+    let (text, dim, accent, panel, red): (Hsla, Hsla, Hsla, Hsla, Hsla) =
+        (rgb(0xc0caf5).into(), rgb(0x6b7394).into(), rgb(0x7aa2f7).into(), rgb(0x1a1b26).into(), rgb(0xf7768e).into());
     let count = pane.read(cx).find.as_ref().map(|f| f.count).unwrap_or_default();
     let label = count_label(&bar.query, count);
     let missing = count.done && count.total == 0 && !bar.query.is_empty();
@@ -615,12 +629,12 @@ pub(crate) fn render_bar(bar: &FindBar, block_id: &str, pane: &Entity<Pane>, cx:
         .py_1()
         .bg(panel)
         .border_1()
-        .border_color(if missing { rgb(0xf7768e).into() } else { accent })
+        .border_color(if missing { red } else { accent })
         .rounded_md()
         .shadow_md()
         .text_size(px(12.0))
         .child(field)
-        .child(div().flex_shrink_0().text_color(if missing { rgb(0xf7768e).into() } else { text }).child(SharedString::from(label)));
+        .child(div().flex_shrink_0().text_color(if missing { red } else { text }).child(SharedString::from(label)));
     if case_sensitive(&bar.query) {
         bar_el = bar_el.child(div().flex_shrink_0().text_color(dim).child("Aa"));
     }
