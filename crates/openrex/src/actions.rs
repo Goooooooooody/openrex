@@ -917,6 +917,7 @@ impl Workspace {
             pane.update(cx, |pane, cx| pane.set_font_size(size, cx));
         }
         self.store.update(cx, |s, _| s.settings.font_size = size);
+        crate::theme::remember("font_size", json!(size));
     }
 
     fn open_path_input(&mut self, title: &str, action: &str, files: bool, cx: &mut Context<Self>) -> Outcome {

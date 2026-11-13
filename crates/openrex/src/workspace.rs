@@ -5,7 +5,7 @@ use gpui::{
     App, Bounds, ClickEvent, ClipboardItem, Context, CursorStyle, Entity, FocusHandle, Hsla, InteractiveElement,
     IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
     Render, SharedString, StatefulInteractiveElement, Styled, Window, canvas, div, hsla, px,
-    relative, rgb,
+    relative,
 };
 use openrex_proto::types::{LayoutNode, SessionView, Window as RexWindow};
 use serde_json::Value;
@@ -19,26 +19,11 @@ pub const KEY_CONTEXT: &str = "OpenRex";
 
 const SIDEBAR_W: f32 = 190.0;
 
-struct Theme {
-    bg: Hsla,
-    panel: Hsla,
-    border: Hsla,
-    text: Hsla,
-    dim: Hsla,
-    accent: Hsla,
-    danger: Hsla,
-}
+use crate::theme::Chrome as Theme;
 
+/// The window's colours, which follow the terminal theme.
 fn theme() -> Theme {
-    Theme {
-        bg: rgb(0x16161e).into(),
-        panel: rgb(0x1a1b26).into(),
-        border: rgb(0x2a2c3d).into(),
-        text: rgb(0xc0caf5).into(),
-        dim: rgb(0x6b7394).into(),
-        accent: rgb(0x7aa2f7).into(),
-        danger: rgb(0xf7768e).into(),
-    }
+    crate::theme::chrome()
 }
 
 /// A border between two parts of a split, being dragged.
@@ -382,7 +367,7 @@ impl Workspace {
                     .cursor_pointer()
                     .text_color(if active { t.text } else { t.dim })
                     .when_active(active, t.border)
-                    .hover(|s| s.bg(rgb(0x24263a)))
+                    .hover(|s| s.bg(t.hover))
                     .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                         this.confirm_destroy = None;
                         let id = id.clone();
@@ -394,7 +379,7 @@ impl Workspace {
                             .id(("session-close", i))
                             .px_1()
                             .text_color(if confirming { t.danger } else { t.dim })
-                            .hover(|s| s.text_color(rgb(0xf7768e)))
+                            .hover(|s| s.text_color(t.danger))
                             .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                                 cx.stop_propagation();
                                 if this.confirm_destroy.as_deref() == Some(id2.as_str()) {
@@ -430,7 +415,7 @@ impl Workspace {
                     .text_color(t.dim)
                     .border_t_1()
                     .border_color(t.border)
-                    .hover(|s| s.text_color(rgb(0xc0caf5)))
+                    .hover(|s| s.text_color(t.text))
                     .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                         this.with_store(cx, |s, cx| s.new_session(cx));
                     }))
@@ -478,7 +463,7 @@ impl Workspace {
                         div()
                             .id(("tab-close", i))
                             .text_color(t.dim)
-                            .hover(|s| s.text_color(rgb(0xf7768e)))
+                            .hover(|s| s.text_color(t.danger))
                             .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                                 cx.stop_propagation();
                                 let id = close_id.clone();
@@ -494,7 +479,7 @@ impl Workspace {
                 .px_3()
                 .cursor_pointer()
                 .text_color(t.dim)
-                .hover(|s| s.text_color(rgb(0xc0caf5)))
+                .hover(|s| s.text_color(t.text))
                 .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                     this.with_store(cx, |s, cx| s.new_window(cx));
                 }))
@@ -599,8 +584,8 @@ impl Workspace {
                     .px_3()
                     .py(px(3.0))
                     .cursor_pointer()
-                    .when_active(chosen, rgb(0x2e3250).into())
-                    .hover(|s| s.bg(rgb(0x24263a)))
+                    .when_active(chosen, t.selected)
+                    .hover(|s| s.bg(t.hover))
                     .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                         let Some(p) = &mut this.palette else { return };
                         p.selected = i;
@@ -612,7 +597,7 @@ impl Workspace {
                         }
                         cx.notify();
                     }))
-                    .child(div().flex_shrink_0().text_color(if chosen { t.text } else { rgb(0xa9b1d6).into() }).child(SharedString::from(item.label.clone())))
+                    .child(div().flex_shrink_0().text_color(if chosen { t.text } else { t.soft }).child(SharedString::from(item.label.clone())))
                     .child(div().flex_1().min_w_0().truncate().text_color(t.dim).text_size(px(11.0)).child(SharedString::from(item.detail.clone())))
                     .child(div().flex_shrink_0().text_color(t.dim).text_size(px(11.0)).child(SharedString::from(item.hint.clone()))),
             );
@@ -684,9 +669,9 @@ impl Workspace {
         let t = theme();
         let store = self.store.read(cx);
         let (dot, label) = match &store.status {
-            Status::Connected => (rgb(0x9ece6a), format!("{}", store.endpoint)),
-            Status::Connecting => (rgb(0xe0af68), format!("connecting to {}", store.endpoint)),
-            Status::Disconnected(_) => (rgb(0xf7768e), "disconnected".to_string()),
+            Status::Connected => (t.ok, format!("{}", store.endpoint)),
+            Status::Connecting => (t.warn, format!("connecting to {}", store.endpoint)),
+            Status::Disconnected(_) => (t.danger, "disconnected".to_string()),
         };
         let mut keys_state = String::new();
         if let Some(mode) = self.modes.last() {
@@ -796,6 +781,7 @@ impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.drain_requests(window, cx);
         self.sync_focus(window, cx);
+        crate::theme::sync(self, cx);
         let t = theme();
         let store = self.store.read(cx);
         let font = SharedString::from(store.settings.font_family.clone());
@@ -827,7 +813,7 @@ impl Render for Workspace {
                         .border_1()
                         .border_color(t.border)
                         .cursor_pointer()
-                        .hover(|s| s.bg(rgb(0x24263a)))
+                        .hover(|s| s.bg(t.hover))
                         .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                             this.with_store(cx, |s, cx| s.connect(cx));
                         }))

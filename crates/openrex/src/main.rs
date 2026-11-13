@@ -19,19 +19,26 @@ the local server's socket, $XDG_RUNTIME_DIR/rex/server.sock.
 Options:
   --font FAMILY     Terminal font (default: the system's monospace font)
   --font-size PX    Terminal font size in pixels (default: 14)
+  --theme NAME      Colour theme: a built-in one or a Ghostty theme's name
   -h, --help        Show this help
   -V, --version     Show the version
+
+Settings saved in ~/.config/openrex/settings.json (the theme, font_family, and
+font_size) apply unless an option overrides them.
 ";
 
 struct Args {
     endpoint: Endpoint,
     settings: Settings,
+    theme: Option<openrex::theme::TermTheme>,
+    settings_file: Option<openrex::theme::SettingsFile>,
 }
 
 fn parse_args() -> Result<Option<Args>> {
     let mut endpoint = None;
     let mut font = None;
-    let mut font_size = 14.0;
+    let mut font_size = None;
+    let mut theme = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -44,11 +51,12 @@ fn parse_args() -> Result<Option<Args>> {
                 return Ok(None);
             }
             "--font" => font = Some(args.next().context("--font needs a font family")?),
+            "--theme" => theme = Some(args.next().context("--theme needs a theme's name")?),
             "--font-size" => {
                 let value = args.next().context("--font-size needs a size in pixels")?;
-                font_size = value.parse().ok().filter(|s| (6.0..=72.0).contains(s)).with_context(|| {
+                font_size = Some(value.parse().ok().filter(|s| (6.0..=72.0).contains(s)).with_context(|| {
                     format!("--font-size takes a number from 6 to 72, not {value}")
-                })?;
+                })?);
             }
             s if s.starts_with('-') => bail!("unknown option {s}\n\n{USAGE}"),
             s if endpoint.is_none() => endpoint = Some(Endpoint::parse(s)?),
@@ -59,8 +67,29 @@ fn parse_args() -> Result<Option<Args>> {
         Some(e) => e,
         None => Endpoint::from_env()?,
     };
-    let font_family = font.unwrap_or_else(system_monospace);
-    Ok(Some(Args { endpoint, settings: Settings { font_family, font_size } }))
+    // The options win over the settings file.
+    let settings_file = openrex::theme::SettingsFile::standard();
+    let saved = match settings_file.as_ref().map(|f| f.load()) {
+        Some(Ok(saved)) => saved,
+        Some(Err(e)) => {
+            eprintln!("openrex: {e}");
+            Default::default()
+        }
+        None => Default::default(),
+    };
+    let theme = match theme {
+        Some(name) => Some(openrex::theme::find(&name).with_context(|| format!("there is no theme named {name}"))?),
+        None => saved.theme.and_then(|name| {
+            let found = openrex::theme::find(&name);
+            if found.is_none() {
+                eprintln!("openrex: the saved theme {name} isn't installed; using {}", openrex::theme::DEFAULT_THEME);
+            }
+            found
+        }),
+    };
+    let font_family = font.or(saved.font_family).unwrap_or_else(system_monospace);
+    let font_size = font_size.or(saved.font_size).unwrap_or(14.0);
+    Ok(Some(Args { endpoint, settings: Settings { font_family, font_size }, theme, settings_file }))
 }
 
 /// The family fontconfig picks for `monospace`.
@@ -95,7 +124,8 @@ fn main() {
         })
         .detach();
 
-        let Args { endpoint, settings } = args;
+        let Args { endpoint, settings, theme, settings_file } = args;
+        openrex::theme::init(settings_file, theme);
         let store = cx.new(|cx| Store::new(endpoint, settings, cx));
         let bounds = Bounds::centered(None, size(px(1180.0), px(760.0)), cx);
         let opened = cx.open_window(
