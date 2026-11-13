@@ -72,6 +72,8 @@ pub struct Store {
     pub perform_queue: Vec<PerformRequest>,
     /// A short message for the status bar, such as "Copied pane ID".
     pub notice: Option<String>,
+    /// Echo state and onboarding steps, for the inspect module.
+    pub inspect: crate::inspect::InspectState,
     /// Problems the server found in OpenRex's own Lua scripts.
     pub script_diagnostics: Vec<String>,
     /// Whether scripts were loaded, so that removing them all unloads them.
@@ -116,6 +118,7 @@ impl Store {
             keymap: Keymap::defaults(),
             perform_queue: Vec::new(),
             notice: None,
+            inspect: Default::default(),
             script_diagnostics: Vec::new(),
             scripts_loaded: false,
             server: Default::default(),
@@ -324,6 +327,7 @@ impl Store {
                 let Some(block_id) = p["block_id"].as_str() else { return };
                 let payload = &p["payload"];
                 self.activity.on_event(session_id, block_id, p["name"].as_str().unwrap_or(""), payload);
+                crate::inspect::on_block_event(self, session_id, block_id, p["name"].as_str().unwrap_or(""), payload, cx);
                 match p["name"].as_str().unwrap_or("") {
                     "title_changed" => {
                         let title = payload["title"].as_str().unwrap_or("").to_string();

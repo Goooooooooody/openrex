@@ -4,6 +4,7 @@ pub mod actions;
 pub mod activity;
 pub mod find;
 pub mod graphics;
+pub mod inspect;
 pub mod input;
 pub mod keymap;
 pub mod keys;

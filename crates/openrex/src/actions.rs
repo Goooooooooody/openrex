@@ -652,6 +652,8 @@ impl Workspace {
                         .filter_map(|a| Some((a["action"].as_str()?.to_string(), a.get("args").cloned().unwrap_or(Value::Null))))
                         .collect();
                     this.queued_actions.extend(queued);
+                    // The store's observer performs them, even off screen.
+                    this.store.update(cx, |_, cx| cx.notify());
                     cx.notify();
                 }
                 Err(e) => this.store.update(cx, |s, cx| {

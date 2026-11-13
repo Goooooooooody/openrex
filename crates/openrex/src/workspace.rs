@@ -67,6 +67,9 @@ pub struct Workspace {
 impl Workspace {
     pub fn new(store: Entity<Store>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe_in(&store, window, |this, _, window, cx| {
+            // Answer other clients now, not at the next frame: a window that
+            // isn't on screen may not draw for a long time.
+            this.drain_requests(window, cx);
             this.flush_clipboard(window, cx);
             cx.notify();
         })
@@ -163,6 +166,7 @@ impl Workspace {
             crate::server::perform,
             crate::input::perform,
             crate::graphics::perform,
+            crate::inspect::perform,
         ];
         MODULES.iter().find_map(|perform| perform(self, action, args, target, window, cx))
     }
@@ -207,7 +211,12 @@ impl Workspace {
                 cx.stop_propagation();
                 self.key_prefix.clear();
             }
-            Resolution::Unbound => self.key_prefix.clear(),
+            Resolution::Unbound => {
+                self.key_prefix.clear();
+                if press.named.as_deref() == Some("enter") {
+                    crate::inspect::after_enter(self, cx);
+                }
+            }
         }
         cx.notify();
     }
@@ -528,6 +537,7 @@ impl Workspace {
         };
         let store = self.store.read(cx);
         let mut dividers = Vec::new();
+        let mut cards = Vec::new();
         for layer in &win.layers {
             if layer.is_minimized() {
                 continue;
@@ -546,7 +556,13 @@ impl Workspace {
                 collect_dividers(layout, &mut dividers);
             }
             for (block_id, r) in leaves {
-                let Some(pane) = store.panes.get(&block_id) else { continue };
+                let Some(pane) = store.panes.get(&block_id) else {
+                    // A block that isn't a terminal, such as Rex's walkthrough.
+                    if let Some(block) = layer.blocks.iter().find(|b| b.block_id.as_deref() == Some(block_id.as_str())) {
+                        cards.push((block.clone(), r));
+                    }
+                    continue;
+                };
                 let focused = win.focused_block_id.as_deref() == Some(block_id.as_str())
                     && pane.read(cx).focus.is_focused(window);
                 let border = match (focused, layer.is_floating()) {
@@ -595,6 +611,21 @@ impl Workspace {
                     this.drag = Some(d.clone());
                 }),
             ));
+        }
+        let session = view.session_id.clone().unwrap_or_default();
+        for (block, r) in cards {
+            let card = crate::inspect::block_card(self, &session, &block, cx);
+            area = area.child(
+                div()
+                    .absolute()
+                    .left(relative(r[0]))
+                    .top(relative(r[1]))
+                    .w(relative(r[2]))
+                    .h(relative(r[3]))
+                    .border_1()
+                    .border_color(theme().border)
+                    .child(card),
+            );
         }
         area.children(crate::layers::render_floating(self, win, window, cx))
     }
@@ -712,6 +743,9 @@ impl Workspace {
         let mut keys_state = String::new();
         if let Some(mode) = self.modes.last() {
             keys_state = format!("mode: {mode}");
+        }
+        if crate::inspect::focused_echo_off(self, cx) {
+            keys_state = format!("{keys_state}  echo off: input hidden").trim().to_string();
         }
         if !self.key_prefix.is_empty() {
             let typed: Vec<String> = self.key_prefix.iter().map(|p| p.spelled()).collect();

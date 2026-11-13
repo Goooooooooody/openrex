@@ -25,6 +25,13 @@ OpenRex is not made by or affiliated with Superlogical, the makers of Rex.
   dashed), underline colors, strikethrough, and overline. **Kitty graphics**
   images.
 - **Find** in the screen and scrollback, with every match highlighted.
+- **Copy or save the scrollback** as text or as HTML with its colors
+  (`format`), and **Pane Info**: the foreground process, directory, size and
+  owner, changed modes, and input mode. The status bar says when a program is
+  reading input without echo, as at a password prompt. Copies of any size,
+  from programs or from another client's selection, reach the clipboard.
+- **Blocks that aren't terminals**, such as Rex's onboarding walkthrough,
+  show as a card you can restart or close.
 - **Links**: web links and OSC 8 hyperlinks open with Ctrl+click.
 - **Activity**: what programs report (OSC 7501 program status, OSC 9;4
   progress), bells, and exits show on tabs and sessions, with an activity
