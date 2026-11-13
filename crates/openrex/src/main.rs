@@ -61,9 +61,13 @@ fn parse_args() -> Result<Option<Args>> {
             }
             "--font-size" => {
                 let value = args.next().context("--font-size needs a size in pixels")?;
-                font_size = Some(value.parse().ok().filter(|s| (6.0..=72.0).contains(s)).with_context(|| {
-                    format!("--font-size takes a number from 6 to 72, not {value}")
-                })?);
+                font_size = Some(
+                    value
+                        .parse()
+                        .ok()
+                        .filter(|s| (6.0..=72.0).contains(s))
+                        .with_context(|| format!("--font-size takes a number from 6 to 72, not {value}"))?,
+                );
             }
             s if s.starts_with('-') => bail!("unknown option {s}\n\n{USAGE}"),
             s if endpoint.is_none() => endpoint = Some(Endpoint::parse(s)?),

@@ -58,10 +58,7 @@ impl Endpoint {
             let (host, port) = split_host_port(rest, s)?;
             return Ok(Endpoint::Tls { host, port: port.unwrap_or(443) });
         }
-        let rest = s
-            .strip_prefix("http://")
-            .or_else(|| s.strip_prefix("ws://"))
-            .unwrap_or(s);
+        let rest = s.strip_prefix("http://").or_else(|| s.strip_prefix("ws://")).unwrap_or(s);
         if rest.contains("://") {
             bail!("unsupported endpoint scheme in {s}");
         }
@@ -160,15 +157,9 @@ impl Endpoint {
         let scheme = if matches!(self, Endpoint::Tls { .. }) { "wss" } else { "ws" };
         let url = format!("{scheme}://{}{}", self.authority(), path);
         let mut req = url.as_str().into_client_request()?;
-        req.headers_mut()
-            .insert("Sec-WebSocket-Protocol", HeaderValue::from_str(subprotocol)?);
-        let (ws, resp) = async_tungstenite::client_async(req, io)
-            .await
-            .with_context(|| format!("opening {url}"))?;
-        let got = resp
-            .headers()
-            .get("Sec-WebSocket-Protocol")
-            .and_then(|v| v.to_str().ok());
+        req.headers_mut().insert("Sec-WebSocket-Protocol", HeaderValue::from_str(subprotocol)?);
+        let (ws, resp) = async_tungstenite::client_async(req, io).await.with_context(|| format!("opening {url}"))?;
+        let got = resp.headers().get("Sec-WebSocket-Protocol").and_then(|v| v.to_str().ok());
         if got != Some(subprotocol) {
             bail!("server did not accept subprotocol {subprotocol} (answered {got:?})");
         }
@@ -188,9 +179,8 @@ impl std::fmt::Display for Endpoint {
 }
 
 async fn tcp(host: &str, port: u16) -> Result<async_net::TcpStream> {
-    let s = async_net::TcpStream::connect((host, port))
-        .await
-        .with_context(|| format!("connecting to {host}:{port}"))?;
+    let s =
+        async_net::TcpStream::connect((host, port)).await.with_context(|| format!("connecting to {host}:{port}"))?;
     s.set_nodelay(true).ok();
     Ok(s)
 }
@@ -230,9 +220,8 @@ fn tls_config() -> Result<Arc<ClientConfig>> {
 fn split_host_port(s: &str, whole: &str) -> Result<(String, Option<u16>)> {
     let s = s.trim_end_matches('/');
     let (host, port) = if let Some(rest) = s.strip_prefix('[') {
-        let (host, after) = rest
-            .split_once(']')
-            .with_context(|| format!("endpoint {whole} has an unclosed [ in its host"))?;
+        let (host, after) =
+            rest.split_once(']').with_context(|| format!("endpoint {whole} has an unclosed [ in its host"))?;
         (host, after.strip_prefix(':'))
     } else {
         match s.split_once(':') {
@@ -242,10 +231,7 @@ fn split_host_port(s: &str, whole: &str) -> Result<(String, Option<u16>)> {
         }
     };
     let port = match port {
-        Some(p) => Some(
-            p.parse::<u16>()
-                .with_context(|| format!("endpoint {whole} has an invalid port"))?,
-        ),
+        Some(p) => Some(p.parse::<u16>().with_context(|| format!("endpoint {whole} has an invalid port"))?),
         None => None,
     };
     let host = if host.is_empty() && port.is_some() { "127.0.0.1" } else { host };
@@ -265,32 +251,17 @@ mod tests {
             Endpoint::parse("unix:///run/user/1000/rex/server.sock").unwrap(),
             Endpoint::Unix("/run/user/1000/rex/server.sock".into())
         );
-        assert_eq!(
-            Endpoint::parse("/tmp/x.sock").unwrap(),
-            Endpoint::Unix("/tmp/x.sock".into())
-        );
-        assert_eq!(
-            Endpoint::parse("http://box:7297/").unwrap(),
-            Endpoint::Tcp { host: "box".into(), port: 7297 }
-        );
-        assert_eq!(
-            Endpoint::parse(":7297").unwrap(),
-            Endpoint::Tcp { host: "127.0.0.1".into(), port: 7297 }
-        );
+        assert_eq!(Endpoint::parse("/tmp/x.sock").unwrap(), Endpoint::Unix("/tmp/x.sock".into()));
+        assert_eq!(Endpoint::parse("http://box:7297/").unwrap(), Endpoint::Tcp { host: "box".into(), port: 7297 });
+        assert_eq!(Endpoint::parse(":7297").unwrap(), Endpoint::Tcp { host: "127.0.0.1".into(), port: 7297 });
         assert!(Endpoint::parse("box").is_err());
         assert!(Endpoint::parse("quic://box:1").is_err());
         assert_eq!(
             Endpoint::parse("https://rex.tail1234.ts.net/").unwrap(),
             Endpoint::Tls { host: "rex.tail1234.ts.net".into(), port: 443 }
         );
-        assert_eq!(
-            Endpoint::parse("wss://[::1]:8443").unwrap(),
-            Endpoint::Tls { host: "::1".into(), port: 8443 }
-        );
-        assert_eq!(
-            Endpoint::parse("[::1]:7297").unwrap(),
-            Endpoint::Tcp { host: "::1".into(), port: 7297 }
-        );
+        assert_eq!(Endpoint::parse("wss://[::1]:8443").unwrap(), Endpoint::Tls { host: "::1".into(), port: 8443 });
+        assert_eq!(Endpoint::parse("[::1]:7297").unwrap(), Endpoint::Tcp { host: "::1".into(), port: 7297 });
     }
 
     #[test]
@@ -298,18 +269,12 @@ mod tests {
         let tls = |h: &str, port| Endpoint::Tls { host: h.into(), port };
         let tcp = |h: &str, port| Endpoint::Tcp { host: h.into(), port };
         let ts = "studio.tail1234.ts.net";
-        assert_eq!(
-            Endpoint::candidates(ts).unwrap(),
-            vec![tls(ts, 443), tls(ts, 7297), tcp(ts, 7297)]
-        );
+        assert_eq!(Endpoint::candidates(ts).unwrap(), vec![tls(ts, 443), tls(ts, 7297), tcp(ts, 7297)]);
         assert_eq!(Endpoint::candidates("box:7300").unwrap(), vec![tls("box", 7300), tcp("box", 7300)]);
         assert_eq!(Endpoint::candidates("https://box").unwrap(), vec![tls("box", 443), tls("box", 7297)]);
         assert_eq!(Endpoint::candidates("https://box:9").unwrap(), vec![tls("box", 9)]);
         assert_eq!(Endpoint::candidates("http://box:80").unwrap(), vec![tcp("box", 80)]);
-        assert_eq!(
-            Endpoint::candidates("unix:///tmp/rex.sock").unwrap(),
-            vec![Endpoint::Unix("/tmp/rex.sock".into())]
-        );
+        assert_eq!(Endpoint::candidates("unix:///tmp/rex.sock").unwrap(), vec![Endpoint::Unix("/tmp/rex.sock".into())]);
         assert!(Endpoint::candidates("").is_err());
         assert!(Endpoint::candidates("tailnet://box:1").is_err());
         assert!(Endpoint::candidates("box:notaport").is_err());

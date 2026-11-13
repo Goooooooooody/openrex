@@ -161,7 +161,11 @@ fn other_client(ws: &mut Workspace, args: &Value, cx: &mut Context<Workspace>) -
                         .filter_map(|a| {
                             let name = a["name"].as_str()?.to_string();
                             let title = a["title"].as_str().filter(|t| !t.is_empty()).unwrap_or(&name).to_string();
-                            Some(Item::new(title, "client.other.perform", json!({"client": client, "action": name})).detail(a["category"].as_str().unwrap_or("").to_string()).keywords(name))
+                            Some(
+                                Item::new(title, "client.other.perform", json!({"client": client, "action": name}))
+                                    .detail(a["category"].as_str().unwrap_or("").to_string())
+                                    .keywords(name),
+                            )
                         })
                         .collect();
                     if let Some(p) = ws.palette.as_mut().filter(|p| p.title == "Actions") {
@@ -189,9 +193,24 @@ fn other_client(ws: &mut Workspace, args: &Value, cx: &mut Context<Workspace>) -
                         .filter_map(|c| {
                             let id = c["client_id"].as_str()?.to_string();
                             let info = &c["info"];
-                            let name = [info["label"].as_str(), info["name"].as_str()].into_iter().flatten().collect::<Vec<_>>().join(" · ");
-                            let detail = format!("{} {}", info["kind"].as_str().unwrap_or(""), c["principal"]["display"].as_str().unwrap_or(""));
-                            Some(Item::new(if name.is_empty() { id.clone() } else { name }, "client.other.perform", json!({"client": id})).detail(detail))
+                            let name = [info["label"].as_str(), info["name"].as_str()]
+                                .into_iter()
+                                .flatten()
+                                .collect::<Vec<_>>()
+                                .join(" · ");
+                            let detail = format!(
+                                "{} {}",
+                                info["kind"].as_str().unwrap_or(""),
+                                c["principal"]["display"].as_str().unwrap_or("")
+                            );
+                            Some(
+                                Item::new(
+                                    if name.is_empty() { id.clone() } else { name },
+                                    "client.other.perform",
+                                    json!({"client": id}),
+                                )
+                                .detail(detail),
+                            )
                         })
                         .collect();
                     if let Some(p) = ws.palette.as_mut().filter(|p| p.title == "Run Action on Another Client") {
@@ -213,7 +232,11 @@ fn other_client(ws: &mut Workspace, args: &Value, cx: &mut Context<Workspace>) -
 fn block_methods(ws: &mut Workspace, args: &Value, target: &Target, cx: &mut Context<Workspace>) -> Outcome {
     let Some(view) = ws.view(cx) else { return Err(("conflict".into(), "no session is open".into())) };
     let Some(session) = view.session_id.clone() else { return Ok(Value::Null) };
-    let Some(block) = arg(args, "block").map(str::to_string).or(target.block_id.clone()).or_else(|| focused_block(&view).map(str::to_string)) else {
+    let Some(block) = arg(args, "block")
+        .map(str::to_string)
+        .or(target.block_id.clone())
+        .or_else(|| focused_block(&view).map(str::to_string))
+    else {
         return Err(("conflict".into(), "no pane is focused".into()));
     };
     let Some(control) = ws.store.read(cx).control() else { return Ok(Value::Null) };
@@ -227,7 +250,8 @@ fn block_methods(ws: &mut Workspace, args: &Value, target: &Target, cx: &mut Con
                     Err(e) => vec![format!("{}: {}", e.code, e.message)],
                 };
                 if let Some(p) = ws.palette.as_mut().filter(|p| p.title == method) {
-                    p.items = lines.into_iter().map(|l| Item::new(l.clone(), "pane.info_copy", json!({"text": l}))).collect();
+                    p.items =
+                        lines.into_iter().map(|l| Item::new(l.clone(), "pane.info_copy", json!({"text": l}))).collect();
                     p.empty = "It returned nothing".into();
                 }
                 cx.notify();
@@ -250,8 +274,16 @@ fn block_methods(ws: &mut Workspace, args: &Value, target: &Target, cx: &mut Con
                 .map(|(short, m)| {
                     let needs = m["input_schema"]["required"].as_array().is_some_and(|r| !r.is_empty());
                     let full = if creator.is_empty() { short.clone() } else { format!("{creator}.{short}") };
-                    let item = Item::new(short.clone(), if needs { "client.palette.close" } else { "pane.methods" }, json!({"block": block, "method": full}));
-                    item.detail(m["description"].as_str().unwrap_or("").to_string()).hint(if needs { "needs arguments" } else { "" })
+                    let item = Item::new(
+                        short.clone(),
+                        if needs { "client.palette.close" } else { "pane.methods" },
+                        json!({"block": block, "method": full}),
+                    );
+                    item.detail(m["description"].as_str().unwrap_or("").to_string()).hint(if needs {
+                        "needs arguments"
+                    } else {
+                        ""
+                    })
                 })
                 .collect();
             items.sort_by(|a, b| a.label.cmp(&b.label));
@@ -306,7 +338,11 @@ fn block_types(ws: &mut Workspace, cx: &mut Context<Workspace>) -> Outcome {
                 for f in creator["flavors"].as_array().into_iter().flatten() {
                     let Some(flavor) = f["flavor"].as_str() else { continue };
                     let title = f["title"].as_str().filter(|t| !t.is_empty()).unwrap_or(flavor);
-                    items.push(Item::new(title, "client.tab.new_with", json!({"flavor": flavor})).detail(f["description"].as_str().unwrap_or("").to_string()).keywords(flavor));
+                    items.push(
+                        Item::new(title, "client.tab.new_with", json!({"flavor": flavor}))
+                            .detail(f["description"].as_str().unwrap_or("").to_string())
+                            .keywords(flavor),
+                    );
                 }
             }
             if let Some(p) = ws.palette.as_mut().filter(|p| p.title == "New Tab With") {
@@ -324,7 +360,9 @@ fn block_types(ws: &mut Workspace, cx: &mut Context<Workspace>) -> Outcome {
 /// Clients Attached to This Session.
 fn session_clients(ws: &mut Workspace, cx: &mut Context<Workspace>) -> Outcome {
     let Some(control) = ws.store.read(cx).control() else { return Ok(Value::Null) };
-    let Some(session) = ws.store.read(cx).current.clone() else { return Err(("conflict".into(), "no session is open".into())) };
+    let Some(session) = ws.store.read(cx).current.clone() else {
+        return Err(("conflict".into(), "no session is open".into()));
+    };
     ws.palette = Some(Palette::pick("Clients in This Session", Vec::new()).empty("Asking the server…"));
     cx.spawn(async move |this, cx| {
         let result = control.call("session.list_clients", json!({"session_id": session})).await;
@@ -338,7 +376,11 @@ fn session_clients(ws: &mut Workspace, cx: &mut Context<Workspace>) -> Outcome {
                     let id = c["client_id"].as_str()?.to_string();
                     let info = &c["info"];
                     let name = info["name"].as_str().unwrap_or("client").to_string();
-                    let detail = format!("{} {}", info["label"].as_str().unwrap_or(""), c["principal"]["display"].as_str().unwrap_or(""));
+                    let detail = format!(
+                        "{} {}",
+                        info["label"].as_str().unwrap_or(""),
+                        c["principal"]["display"].as_str().unwrap_or("")
+                    );
                     Some(Item::new(name, "pane.info_copy", json!({"text": id})).detail(detail.trim().to_string()))
                 })
                 .collect();

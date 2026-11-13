@@ -49,9 +49,46 @@ pub struct Press {
 }
 
 const NAMED: &[&str] = &[
-    "enter", "escape", "tab", "space", "backspace", "delete", "insert", "left", "right", "up", "down", "home",
-    "end", "pageup", "pagedown", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
-    "f13", "f14", "f15", "f16", "f17", "f18", "f19", "f20", "f21", "f22", "f23", "f24", "menu",
+    "enter",
+    "escape",
+    "tab",
+    "space",
+    "backspace",
+    "delete",
+    "insert",
+    "left",
+    "right",
+    "up",
+    "down",
+    "home",
+    "end",
+    "pageup",
+    "pagedown",
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11",
+    "f12",
+    "f13",
+    "f14",
+    "f15",
+    "f16",
+    "f17",
+    "f18",
+    "f19",
+    "f20",
+    "f21",
+    "f22",
+    "f23",
+    "f24",
+    "menu",
 ];
 
 fn normalize_named(name: &str) -> Option<&'static str> {
@@ -173,9 +210,27 @@ fn mods_prefix(mods: u8) -> String {
 
 /// The symbols a US keyboard types with shift, and the key under each.
 const SHIFTED: &[(char, char)] = &[
-    ('!', '1'), ('@', '2'), ('#', '3'), ('$', '4'), ('%', '5'), ('^', '6'), ('&', '7'),
-    ('*', '8'), ('(', '9'), (')', '0'), ('_', '-'), ('+', '='), ('{', '['), ('}', ']'),
-    ('|', '\\'), (':', ';'), ('"', '\''), ('<', ','), ('>', '.'), ('?', '/'), ('~', '`'),
+    ('!', '1'),
+    ('@', '2'),
+    ('#', '3'),
+    ('$', '4'),
+    ('%', '5'),
+    ('^', '6'),
+    ('&', '7'),
+    ('*', '8'),
+    ('(', '9'),
+    (')', '0'),
+    ('_', '-'),
+    ('+', '='),
+    ('{', '['),
+    ('}', ']'),
+    ('|', '\\'),
+    (':', ';'),
+    ('"', '\''),
+    ('<', ','),
+    ('>', '.'),
+    ('?', '/'),
+    ('~', '`'),
 ];
 
 fn code_of(base: char) -> Option<String> {
@@ -411,8 +466,12 @@ impl Keymap {
             .flatten()
             .map(|d| {
                 let source = d["source"].as_str().map(|s| format!("{s}: ")).unwrap_or_default();
-                format!("{}{}{}", d["severity"].as_str().unwrap_or("warning"), if source.is_empty() { ": " } else { " " }, source)
-                    + d["message"].as_str().unwrap_or("")
+                format!(
+                    "{}{}{}",
+                    d["severity"].as_str().unwrap_or("warning"),
+                    if source.is_empty() { ": " } else { " " },
+                    source
+                ) + d["message"].as_str().unwrap_or("")
             })
             .collect();
         let config = &v["config"];
@@ -447,7 +506,13 @@ impl Keymap {
 
     /// Decides what a press does, given the active modes (innermost last),
     /// the keys of an unfinished sequence, and which actions can run.
-    pub fn resolve(&self, modes: &[String], prefix: &[Press], press: &Press, available: impl Fn(&str) -> bool) -> Resolution {
+    pub fn resolve(
+        &self,
+        modes: &[String],
+        prefix: &[Press],
+        press: &Press,
+        available: impl Fn(&str) -> bool,
+    ) -> Resolution {
         let seq: Vec<&Press> = prefix.iter().chain(std::iter::once(press)).collect();
         let try_mode = |mode: Option<&str>| {
             self.bindings
@@ -464,7 +529,10 @@ impl Keymap {
                 if mode.exclusive {
                     return Resolution::Swallow;
                 }
-                let blocked = mode.blocked.iter().any(|keys| keys.len() == seq.len() && keys.iter().zip(&seq).all(|(k, p)| k.matches(p)));
+                let blocked = mode
+                    .blocked
+                    .iter()
+                    .any(|keys| keys.len() == seq.len() && keys.iter().zip(&seq).all(|(k, p)| k.matches(p)));
                 if blocked {
                     return if prefix.is_empty() { Resolution::Unbound } else { Resolution::Swallow };
                 }
@@ -542,7 +610,11 @@ fn w3c_to_rex(code: &str) -> String {
         if ch.is_ascii_uppercase() && i > 0 {
             out.push('_');
         }
-        if ch.is_ascii_digit() && i > 0 && !out.ends_with('_') && !out.chars().last().is_some_and(|c| c.is_ascii_digit()) {
+        if ch.is_ascii_digit()
+            && i > 0
+            && !out.ends_with('_')
+            && !out.chars().last().is_some_and(|c| c.is_ascii_digit())
+        {
             // Digit1 → digit_1, F12 stays f12.
             if !code.starts_with('F') {
                 out.push('_');
@@ -625,59 +697,200 @@ fn opt_args(props: Value) -> Option<Value> {
 /// Every action OpenRex performs itself, declared to the server so that key
 /// bindings, `rex do`, and other clients can name them.
 pub fn client_actions() -> Vec<ActionInfo> {
-    let a = |name: &str, title: &str, category: &str, keywords: &str, description: &str, args: Option<Value>| ActionInfo {
-        name: name.into(),
-        kind: "client".into(),
-        title: title.into(),
-        description: description.into(),
-        category: category.into(),
-        keywords: keywords.into(),
-        args,
-    };
+    let a =
+        |name: &str, title: &str, category: &str, keywords: &str, description: &str, args: Option<Value>| ActionInfo {
+            name: name.into(),
+            kind: "client".into(),
+            title: title.into(),
+            description: description.into(),
+            category: category.into(),
+            keywords: keywords.into(),
+            args,
+        };
     let dirs4 = ["left", "right", "up", "down"];
     let label = || opt_args(json!({"label": {"type": "string"}}));
     vec![
         // App
         a("client.palette.toggle", "Command Palette…", "App", "command palette search commands actions", "", None),
-        a("client.diagnostics", "Rex Diagnostics", "App", "diagnostics debug server keymap config problems", "Shows the server, the keymap's problems, and the clients.", None),
-        a("client.version.copy", "Copy Version Info", "App", "version build copy clipboard about", "Copies the app and server versions to the clipboard.", None),
-        a("client.debug.copy", "Copy Debug Info", "App", "debug info report copy clipboard", "Copies a report of the app, server, and session state.", None),
+        a(
+            "client.diagnostics",
+            "Rex Diagnostics",
+            "App",
+            "diagnostics debug server keymap config problems",
+            "Shows the server, the keymap's problems, and the clients.",
+            None,
+        ),
+        a(
+            "client.version.copy",
+            "Copy Version Info",
+            "App",
+            "version build copy clipboard about",
+            "Copies the app and server versions to the clipboard.",
+            None,
+        ),
+        a(
+            "client.debug.copy",
+            "Copy Debug Info",
+            "App",
+            "debug info report copy clipboard",
+            "Copies a report of the app, server, and session state.",
+            None,
+        ),
         a("client.notice.dismiss", "Dismiss Notice", "App", "dismiss notice error banner hide", "", None),
-        a("client.config.copy_path", "Copy Config File Path", "App", "config configuration init.lua path copy", "", None),
+        a(
+            "client.config.copy_path",
+            "Copy Config File Path",
+            "App",
+            "config configuration init.lua path copy",
+            "",
+            None,
+        ),
         a("client.config.reload", "Reload Config", "App", "config configuration reload init.lua keybindings", "", None),
-        a("client.scripts.reload", "Reload OpenRex Scripts", "App", "lua scripts reload client openrex", "Loads ~/.config/openrex/scripts/*.lua again.", None),
-        a("client.reconnect", "Reconnect", "App", "reconnect connection server retry", "Connects to the server again.", None),
+        a(
+            "client.scripts.reload",
+            "Reload OpenRex Scripts",
+            "App",
+            "lua scripts reload client openrex",
+            "Loads ~/.config/openrex/scripts/*.lua again.",
+            None,
+        ),
+        a(
+            "client.reconnect",
+            "Reconnect",
+            "App",
+            "reconnect connection server retry",
+            "Connects to the server again.",
+            None,
+        ),
         a("client.quit", "Quit OpenRex", "App", "quit exit close app", "The server keeps every session running.", None),
         a("client.close", "Close", "Window", "close pane tab", "Closes the focused pane, else the selected tab.", None),
         a("client.server.status", "Server Status", "App", "server status version identity tailscale whoami", "", None),
         a("client.clients", "Connected Clients", "App", "clients connected list who", "", None),
-        a("client.tailscale.enable", "Enable Tailscale", "App", "tailscale remote access tailnet enable", "Lets devices on your tailnet reach the server.", None),
+        a(
+            "client.tailscale.enable",
+            "Enable Tailscale",
+            "App",
+            "tailscale remote access tailnet enable",
+            "Lets devices on your tailnet reach the server.",
+            None,
+        ),
         a("client.tailscale.disable", "Disable Tailscale", "App", "tailscale remote access tailnet disable", "", None),
-        a("client.tailscale.logout", "Sign Out of Tailscale", "App", "tailscale logout sign out", "Signs the server out and turns built-in Tailscale off.", None),
-        a("client.tailscale.rename", "Rename on Tailscale…", "App", "tailscale rename hostname device name", "", opt_args(json!({"hostname": {"type": "string"}}))),
-        a("client.set_label", "Set Client Label…", "App", "label name client rex -C address", "Names this client so rex -C NAME can address it.", opt_args(json!({"label": {"type": "string"}}))),
-        a("client.other.perform", "Run Action on Another Client…", "App", "client perform action remote other app control", "Asks another connected client, such as Rex.app, to perform one of its actions.", opt_args(json!({"client": {"type": "string"}, "action": {"type": "string"}}))),
+        a(
+            "client.tailscale.logout",
+            "Sign Out of Tailscale",
+            "App",
+            "tailscale logout sign out",
+            "Signs the server out and turns built-in Tailscale off.",
+            None,
+        ),
+        a(
+            "client.tailscale.rename",
+            "Rename on Tailscale…",
+            "App",
+            "tailscale rename hostname device name",
+            "",
+            opt_args(json!({"hostname": {"type": "string"}})),
+        ),
+        a(
+            "client.set_label",
+            "Set Client Label…",
+            "App",
+            "label name client rex -C address",
+            "Names this client so rex -C NAME can address it.",
+            opt_args(json!({"label": {"type": "string"}})),
+        ),
+        a(
+            "client.other.perform",
+            "Run Action on Another Client…",
+            "App",
+            "client perform action remote other app control",
+            "Asks another connected client, such as Rex.app, to perform one of its actions.",
+            opt_args(json!({"client": {"type": "string"}, "action": {"type": "string"}})),
+        ),
         a("session.clients", "Clients in This Session", "Session", "clients attached session who", "", None),
-        a("client.tab.new_with", "New Tab With…", "Tab", "new tab block kind flavor creator type", "Opens a tab with any kind of block the server makes.", opt_args(json!({"flavor": {"type": "string"}}))),
-        a("pane.new_detached", "New Detached Pane", "Pane", "new detached background pane block hidden", "Starts a shell that runs without a place in any tab.", None),
+        a(
+            "client.tab.new_with",
+            "New Tab With…",
+            "Tab",
+            "new tab block kind flavor creator type",
+            "Opens a tab with any kind of block the server makes.",
+            opt_args(json!({"flavor": {"type": "string"}})),
+        ),
+        a(
+            "pane.new_detached",
+            "New Detached Pane",
+            "Pane",
+            "new detached background pane block hidden",
+            "Starts a shell that runs without a place in any tab.",
+            None,
+        ),
         a("pane.lower_floating", "Send Floating Pane to Back", "Pane", "floating lower back behind send", "", None),
-        a("pane.methods", "Pane Methods…", "Pane", "methods block api call describe inspect advanced", "Lists every method the focused block offers and runs one.", opt_args(json!({"block": {"type": "string"}, "method": {"type": "string"}}))),
-        a("client.tailscale.login", "Sign In to Tailscale…", "App", "tailscale login sign in", "Copies a sign-in link to the clipboard.", None),
+        a(
+            "pane.methods",
+            "Pane Methods…",
+            "Pane",
+            "methods block api call describe inspect advanced",
+            "Lists every method the focused block offers and runs one.",
+            opt_args(json!({"block": {"type": "string"}, "method": {"type": "string"}})),
+        ),
+        a(
+            "client.tailscale.login",
+            "Sign In to Tailscale…",
+            "App",
+            "tailscale login sign in",
+            "Copies a sign-in link to the clipboard.",
+            None,
+        ),
         // Session
         a("session.new", "New Session", "Session", "create session add", "", None),
         a("session.switch", "Change Session…", "Session", "session switch jump go", "", None),
-        a("session.select", "Go to Session", "Session", "session select show jump go identifier id", "", Some(json!({"type": "object", "properties": {"session": {"type": "string"}}, "required": ["session"]}))),
+        a(
+            "session.select",
+            "Go to Session",
+            "Session",
+            "session select show jump go identifier id",
+            "",
+            Some(json!({"type": "object", "properties": {"session": {"type": "string"}}, "required": ["session"]})),
+        ),
         a("session.next", "Next Session", "Session", "cycle session forward", "", None),
         a("session.previous", "Previous Session", "Session", "cycle session back", "", None),
         a("session.rename", "Rename Session", "Session", "rename session name title", "", label()),
-        a("session.close", "Close Session", "Session", "close kill destroy delete session", "", opt_args(json!({"session": {"type": "string"}, "confirm": {"type": "boolean"}}))),
+        a(
+            "session.close",
+            "Close Session",
+            "Session",
+            "close kill destroy delete session",
+            "",
+            opt_args(json!({"session": {"type": "string"}, "confirm": {"type": "boolean"}})),
+        ),
         a("session.refresh", "Refresh Sessions", "Session", "reload sync sessions", "", None),
         a("session.move.up", "Move Session Up", "Session", "move session reorder up earlier", "", None),
         a("session.move.down", "Move Session Down", "Session", "move session reorder down later", "", None),
         // Host
-        a("client.host.switch", "Switch Host", "Host", "host remote machine server switch go connect", "", opt_args(json!({"host": {"type": "string"}}))),
-        a("client.host.add", "Add Remote Host…", "Host", "host remote add server machine url connect", "", opt_args(json!({"address": {"type": "string"}, "label": {"type": "string"}}))),
-        a("client.host.remove", "Remove Host…", "Host", "remove forget delete host remote server", "", opt_args(json!({"host": {"type": "string"}}))),
+        a(
+            "client.host.switch",
+            "Switch Host",
+            "Host",
+            "host remote machine server switch go connect",
+            "",
+            opt_args(json!({"host": {"type": "string"}})),
+        ),
+        a(
+            "client.host.add",
+            "Add Remote Host…",
+            "Host",
+            "host remote add server machine url connect",
+            "",
+            opt_args(json!({"address": {"type": "string"}, "label": {"type": "string"}})),
+        ),
+        a(
+            "client.host.remove",
+            "Remove Host…",
+            "Host",
+            "remove forget delete host remote server",
+            "",
+            opt_args(json!({"host": {"type": "string"}})),
+        ),
         // Tab
         a("client.tab.new", "New Tab", "Tab", "create tab window add", "", None),
         a("client.tab.close", "Close Tab", "Tab", "close tab window", "", None),
@@ -685,17 +898,49 @@ pub fn client_actions() -> Vec<ActionInfo> {
         a("client.tab.rename", "Rename Tab", "Tab", "rename tab window name title", "", label()),
         a("client.tab.next", "Show Next Tab", "Tab", "cycle tab window forward", "", None),
         a("client.tab.previous", "Show Previous Tab", "Tab", "cycle tab window back", "", None),
-        a("client.tab.goto", "Go to Tab", "Tab", "tab window select number index jump go", "", Some(json!({"type": "object", "properties": {"index": {"type": "integer", "minimum": 1}}, "required": ["index"]}))),
-        a("client.tab.move", "Move Tab", "Tab", "move tab window reorder", "", Some(json!({"type": "object", "properties": {"index": {"type": "integer", "minimum": 1}}, "required": ["index"]}))),
+        a(
+            "client.tab.goto",
+            "Go to Tab",
+            "Tab",
+            "tab window select number index jump go",
+            "",
+            Some(
+                json!({"type": "object", "properties": {"index": {"type": "integer", "minimum": 1}}, "required": ["index"]}),
+            ),
+        ),
+        a(
+            "client.tab.move",
+            "Move Tab",
+            "Tab",
+            "move tab window reorder",
+            "",
+            Some(
+                json!({"type": "object", "properties": {"index": {"type": "integer", "minimum": 1}}, "required": ["index"]}),
+            ),
+        ),
         a("client.tab.move.backward", "Move Tab Backward", "Tab", "move tab window reorder left earlier", "", None),
         a("client.tab.move.forward", "Move Tab Forward", "Tab", "move tab window reorder right later", "", None),
         // Pane
-        a("pane.split", "Split Pane", "Pane", "pane split terminal divide new", "", dir_args(&["left", "right", "up", "down", "auto"])),
+        a(
+            "pane.split",
+            "Split Pane",
+            "Pane",
+            "pane split terminal divide new",
+            "",
+            dir_args(&["left", "right", "up", "down", "auto"]),
+        ),
         a("pane.split.left", "Split Pane Left", "Pane", "pane split terminal divide new left", "", None),
         a("pane.split.right", "Split Pane Right", "Pane", "pane split terminal divide new right", "", None),
         a("pane.split.up", "Split Pane Up", "Pane", "pane split terminal divide new above up", "", None),
         a("pane.split.down", "Split Pane Down", "Pane", "pane split terminal divide new below down", "", None),
-        a("pane.split.auto", "Split Pane Best Fit", "Pane", "pane split terminal divide new automatic best fit", "", None),
+        a(
+            "pane.split.auto",
+            "Split Pane Best Fit",
+            "Pane",
+            "pane split terminal divide new automatic best fit",
+            "",
+            None,
+        ),
         a("pane.focus", "Focus Pane", "Pane", "pane focus navigate", "", dir_args(&dirs4)),
         a("pane.focus.left", "Focus Pane Left", "Pane", "pane focus navigate left", "", None),
         a("pane.focus.right", "Focus Pane Right", "Pane", "pane focus navigate right", "", None),
@@ -708,60 +953,293 @@ pub fn client_actions() -> Vec<ActionInfo> {
         a("pane.move.right", "Move Pane Right", "Pane", "pane move swap rearrange right", "", None),
         a("pane.move.up", "Move Pane Up", "Pane", "pane move swap rearrange up above", "", None),
         a("pane.move.down", "Move Pane Down", "Pane", "pane move swap rearrange down below", "", None),
-        a("pane.float", "Float Pane", "Pane", "pane float floating window dock undock overlay pop out tile", "Floats the focused pane, or docks a floating one back into the layout.", None),
-        a("pane.new_floating", "New Floating Pane", "Pane", "pane new create float floating window terminal overlay popup scratchpad", "", None),
-        a("pane.minimize_floating", "Minimize Floating Window", "Pane", "pane floating window hide show toggle minimize restore", "", None),
-        a("pane.minimize_all_floating", "Minimize Floating Windows", "Pane", "pane floating windows all hide show toggle minimize restore", "", None),
+        a(
+            "pane.float",
+            "Float Pane",
+            "Pane",
+            "pane float floating window dock undock overlay pop out tile",
+            "Floats the focused pane, or docks a floating one back into the layout.",
+            None,
+        ),
+        a(
+            "pane.new_floating",
+            "New Floating Pane",
+            "Pane",
+            "pane new create float floating window terminal overlay popup scratchpad",
+            "",
+            None,
+        ),
+        a(
+            "pane.minimize_floating",
+            "Minimize Floating Window",
+            "Pane",
+            "pane floating window hide show toggle minimize restore",
+            "",
+            None,
+        ),
+        a(
+            "pane.minimize_all_floating",
+            "Minimize Floating Windows",
+            "Pane",
+            "pane floating windows all hide show toggle minimize restore",
+            "",
+            None,
+        ),
         a("pane.zoom", "Zoom Pane", "Pane", "pane zoom maximize restore terminal", "", None),
         a("pane.close", "Close Pane", "Pane", "pane close remove terminal", "", None),
         a("pane.close_others", "Close Other Panes", "Pane", "close other panes kill only keep focused", "", None),
-        a("pane.balance", "Balance Splits", "Pane", "pane split balance equalize evenly distribute resize layout", "", None),
-        a("pane.resize", "Resize Pane", "Pane", "pane resize grow shrink divider wider narrower taller shorter", "", Some(json!({"type": "object", "properties": {"direction": {"type": "string", "enum": dirs4}, "amount": {"type": "integer", "minimum": 1}}, "required": ["direction"]}))),
-        a("pane.move_to_new_tab", "Move Pane to New Tab", "Pane", "pane block move new window tab detach split", "", None),
-        a("pane.move_to_tab", "Move Pane to Tab…", "Pane", "pane block move tab window send other existing join", "", opt_args(json!({"index": {"type": "integer", "minimum": 1}}))),
-        a("pane.detach", "Detach Pane", "Pane", "pane block detach hide background keep running", "Takes the pane out of its tab. It keeps running.", None),
-        a("pane.attach", "Show Detached Pane…", "Pane", "pane block attach detached restore place background", "", opt_args(json!({"block": {"type": "string"}}))),
-        a("pane.go_to_directory", "Go to Directory…", "Pane", "go to directory folder path cd new tab open navigate", "Opens a new tab in a directory.", opt_args(json!({"path": {"type": "string"}}))),
-        a("pane.go_to", "Go to Anything…", "Pane", "go to anything pane block tab session jump switch navigate find search", "", None),
-        a("pane.view_activity", "View Activity…", "Pane", "view activity active working blocked failed done agents programs status", "", None),
-        a("pane.insert_path", "Insert Path…", "Pane", "insert path file folder directory cursor type paste complete browse", "", opt_args(json!({"path": {"type": "string"}}))),
-        a("pane.copy_id", "Copy Pane ID", "Pane", "pane block id identifier copy clipboard", "Copies the focused pane's block ID to the clipboard.", None),
+        a(
+            "pane.balance",
+            "Balance Splits",
+            "Pane",
+            "pane split balance equalize evenly distribute resize layout",
+            "",
+            None,
+        ),
+        a(
+            "pane.resize",
+            "Resize Pane",
+            "Pane",
+            "pane resize grow shrink divider wider narrower taller shorter",
+            "",
+            Some(
+                json!({"type": "object", "properties": {"direction": {"type": "string", "enum": dirs4}, "amount": {"type": "integer", "minimum": 1}}, "required": ["direction"]}),
+            ),
+        ),
+        a(
+            "pane.move_to_new_tab",
+            "Move Pane to New Tab",
+            "Pane",
+            "pane block move new window tab detach split",
+            "",
+            None,
+        ),
+        a(
+            "pane.move_to_tab",
+            "Move Pane to Tab…",
+            "Pane",
+            "pane block move tab window send other existing join",
+            "",
+            opt_args(json!({"index": {"type": "integer", "minimum": 1}})),
+        ),
+        a(
+            "pane.detach",
+            "Detach Pane",
+            "Pane",
+            "pane block detach hide background keep running",
+            "Takes the pane out of its tab. It keeps running.",
+            None,
+        ),
+        a(
+            "pane.attach",
+            "Show Detached Pane…",
+            "Pane",
+            "pane block attach detached restore place background",
+            "",
+            opt_args(json!({"block": {"type": "string"}})),
+        ),
+        a(
+            "pane.go_to_directory",
+            "Go to Directory…",
+            "Pane",
+            "go to directory folder path cd new tab open navigate",
+            "Opens a new tab in a directory.",
+            opt_args(json!({"path": {"type": "string"}})),
+        ),
+        a(
+            "pane.go_to",
+            "Go to Anything…",
+            "Pane",
+            "go to anything pane block tab session jump switch navigate find search",
+            "",
+            None,
+        ),
+        a(
+            "pane.view_activity",
+            "View Activity…",
+            "Pane",
+            "view activity active working blocked failed done agents programs status",
+            "",
+            None,
+        ),
+        a(
+            "pane.insert_path",
+            "Insert Path…",
+            "Pane",
+            "insert path file folder directory cursor type paste complete browse",
+            "",
+            opt_args(json!({"path": {"type": "string"}})),
+        ),
+        a(
+            "pane.copy_id",
+            "Copy Pane ID",
+            "Pane",
+            "pane block id identifier copy clipboard",
+            "Copies the focused pane's block ID to the clipboard.",
+            None,
+        ),
         a("pane.rename", "Rename Pane", "Pane", "rename pane block name title label", "", label()),
         a("pane.paste", "Paste into Pane", "Pane", "paste clipboard insert text terminal", "", None),
         a("pane.copy", "Copy from Pane", "Pane", "copy selection clipboard text terminal", "", None),
         a("pane.select_all", "Select All in Pane", "Pane", "select all selection text terminal scrollback", "", None),
-        a("pane.send_key", "Send Key", "Pane", "send key terminal press chord binding", "Sends one key to the focused terminal.", Some(json!({"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]}))),
+        a(
+            "pane.send_key",
+            "Send Key",
+            "Pane",
+            "send key terminal press chord binding",
+            "Sends one key to the focused terminal.",
+            Some(json!({"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]})),
+        ),
         a("pane.clear", "Clear Terminal", "Pane", "clear screen scrollback terminal", "", None),
-        a("pane.copy_text", "Copy Scrollback as Text", "Pane", "copy all screen scrollback history text clipboard format", "Copies the screen and scrollback, with wrapped lines joined.", None),
-        a("pane.copy_html", "Copy Scrollback as HTML", "Pane", "copy all screen scrollback html colors styles clipboard format", "Copies the screen and scrollback as HTML with their colors.", None),
-        a("pane.save_scrollback", "Save Scrollback…", "Pane", "save export write scrollback history file text", "Saves the screen and scrollback to a text file in ~/Downloads.", opt_args(json!({"path": {"type": "string"}}))),
-        a("pane.info", "Pane Info", "Pane", "info process program pid directory size owner modes echo input details inspect", "Shows what the terminal runs and how it is set up.", None),
+        a(
+            "pane.copy_text",
+            "Copy Scrollback as Text",
+            "Pane",
+            "copy all screen scrollback history text clipboard format",
+            "Copies the screen and scrollback, with wrapped lines joined.",
+            None,
+        ),
+        a(
+            "pane.copy_html",
+            "Copy Scrollback as HTML",
+            "Pane",
+            "copy all screen scrollback html colors styles clipboard format",
+            "Copies the screen and scrollback as HTML with their colors.",
+            None,
+        ),
+        a(
+            "pane.save_scrollback",
+            "Save Scrollback…",
+            "Pane",
+            "save export write scrollback history file text",
+            "Saves the screen and scrollback to a text file in ~/Downloads.",
+            opt_args(json!({"path": {"type": "string"}})),
+        ),
+        a(
+            "pane.info",
+            "Pane Info",
+            "Pane",
+            "info process program pid directory size owner modes echo input details inspect",
+            "Shows what the terminal runs and how it is set up.",
+            None,
+        ),
         a("pane.reset", "Reset Terminal", "Pane", "reset terminal state", "", None),
-        a("pane.download", "Download File…", "Pane", "download file save copy from server remote", "Saves a file from the terminal's machine to ~/Downloads.", opt_args(json!({"path": {"type": "string"}}))),
-        a("pane.upload", "Upload Files…", "Pane", "upload file send copy to server remote", "Sends local files to the terminal's machine and types their paths.", opt_args(json!({"paths": {"type": "array", "items": {"type": "string"}}}))),
-        a("client.key.forward", "Send Key to Server", "Pane", "send key forward server script lua binding", "Sends the key that performed it to the focused terminal, for a script to answer.", None),
-        a("client.prompt.previous", "Jump to Previous Prompt", "Pane", "jump scroll previous prompt command mark shell integration up", "", None),
-        a("client.prompt.next", "Jump to Next Prompt", "Pane", "jump scroll next prompt command mark shell integration down", "", None),
+        a(
+            "pane.download",
+            "Download File…",
+            "Pane",
+            "download file save copy from server remote",
+            "Saves a file from the terminal's machine to ~/Downloads.",
+            opt_args(json!({"path": {"type": "string"}})),
+        ),
+        a(
+            "pane.upload",
+            "Upload Files…",
+            "Pane",
+            "upload file send copy to server remote",
+            "Sends local files to the terminal's machine and types their paths.",
+            opt_args(json!({"paths": {"type": "array", "items": {"type": "string"}}})),
+        ),
+        a(
+            "client.key.forward",
+            "Send Key to Server",
+            "Pane",
+            "send key forward server script lua binding",
+            "Sends the key that performed it to the focused terminal, for a script to answer.",
+            None,
+        ),
+        a(
+            "client.prompt.previous",
+            "Jump to Previous Prompt",
+            "Pane",
+            "jump scroll previous prompt command mark shell integration up",
+            "",
+            None,
+        ),
+        a(
+            "client.prompt.next",
+            "Jump to Next Prompt",
+            "Pane",
+            "jump scroll next prompt command mark shell integration down",
+            "",
+            None,
+        ),
         a("client.scroll.page_up", "Scroll Page Up", "Pane", "scroll page up back scrollback history", "", None),
-        a("client.scroll.page_down", "Scroll Page Down", "Pane", "scroll page down forward scrollback history", "", None),
+        a(
+            "client.scroll.page_down",
+            "Scroll Page Down",
+            "Pane",
+            "scroll page down forward scrollback history",
+            "",
+            None,
+        ),
         a("client.scroll.top", "Scroll to Top", "Pane", "scroll top start beginning scrollback history", "", None),
         a("client.scroll.bottom", "Scroll to Bottom", "Pane", "scroll bottom end latest", "", None),
         // Keys
-        a("client.mode.enter", "Enter Mode", "Keys", "mode enter key table prefix resize modal", "Makes the keys a mode binds perform, until the mode is left.", Some(json!({"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}))),
+        a(
+            "client.mode.enter",
+            "Enter Mode",
+            "Keys",
+            "mode enter key table prefix resize modal",
+            "Makes the keys a mode binds perform, until the mode is left.",
+            Some(json!({"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]})),
+        ),
         a("client.mode.exit", "Exit Mode", "Keys", "mode exit leave quit key table escape", "", None),
         a("client.mode.exit_all", "Exit All Modes", "Keys", "mode exit leave quit all key table escape", "", None),
         // Find
-        a("client.find.open", "Find…", "Find", "find search text scrollback highlight", "", opt_args(json!({"query": {"type": "string"}}))),
+        a(
+            "client.find.open",
+            "Find…",
+            "Find",
+            "find search text scrollback highlight",
+            "",
+            opt_args(json!({"query": {"type": "string"}})),
+        ),
         a("client.find.next", "Find Next", "Find", "find search next forward match", "", None),
         a("client.find.previous", "Find Previous", "Find", "find search previous back match", "", None),
         a("client.find.close", "Close Find", "Find", "find search close hide", "", None),
         // View
-        a("client.font.increase", "Increase Font Size", "View", "terminal font size larger bigger increase zoom text", "", None),
-        a("client.font.decrease", "Decrease Font Size", "View", "terminal font size smaller decrease zoom text", "", None),
+        a(
+            "client.font.increase",
+            "Increase Font Size",
+            "View",
+            "terminal font size larger bigger increase zoom text",
+            "",
+            None,
+        ),
+        a(
+            "client.font.decrease",
+            "Decrease Font Size",
+            "View",
+            "terminal font size smaller decrease zoom text",
+            "",
+            None,
+        ),
         a("client.font.reset", "Reset Font Size", "View", "terminal font size reset default original text", "", None),
-        a("client.sidebar.toggle", "Toggle Sidebar", "View", "sidebar collapse expand fold hide show sessions", "", None),
-        a("client.sidebar.activity.toggle", "Toggle Activity", "View", "activity mode view filter working waiting attention programs status sidebar", "", None),
-        a("client.theme.change", "Change Theme…", "View", "theme colour color scheme palette appearance", "", opt_args(json!({"theme": {"type": "string"}}))),
+        a(
+            "client.sidebar.toggle",
+            "Toggle Sidebar",
+            "View",
+            "sidebar collapse expand fold hide show sessions",
+            "",
+            None,
+        ),
+        a(
+            "client.sidebar.activity.toggle",
+            "Toggle Activity",
+            "View",
+            "activity mode view filter working waiting attention programs status sidebar",
+            "",
+            None,
+        ),
+        a(
+            "client.theme.change",
+            "Change Theme…",
+            "View",
+            "theme colour color scheme palette appearance",
+            "",
+            opt_args(json!({"theme": {"type": "string"}})),
+        ),
     ]
 }
 
@@ -824,16 +1302,22 @@ mod tests {
         let p = |k: &str, ctrl: bool| press_of(&ks(k, ctrl, false)).unwrap();
         // The first available binding on a key wins.
         match km.resolve(&[], &[], &p("d", true), available) {
-            Resolution::Run(b) => assert_eq!((b.action.as_str(), b.args["direction"].as_str()), ("pane.split", Some("right"))),
+            Resolution::Run(b) => {
+                assert_eq!((b.action.as_str(), b.args["direction"].as_str()), ("pane.split", Some("right")))
+            }
             other => panic!("{other:?}"),
         }
         assert_eq!(km.resolve(&[], &[], &p("b", true), available), Resolution::Pending);
-        assert!(matches!(km.resolve(&[], &[p("b", true)], &p("c", false), available), Resolution::Run(b) if b.action == "client.tab.new"));
+        assert!(
+            matches!(km.resolve(&[], &[p("b", true)], &p("c", false), available), Resolution::Run(b) if b.action == "client.tab.new")
+        );
         assert_eq!(km.resolve(&[], &[p("b", true)], &p("x", false), available), Resolution::Swallow);
         assert_eq!(km.resolve(&[], &[], &p("x", false), available), Resolution::Unbound);
         // An exclusive mode swallows the keys it doesn't bind.
         let modes = vec!["resize".to_string()];
-        assert!(matches!(km.resolve(&modes, &[], &p("h", false), available), Resolution::Run(b) if b.action == "pane.resize"));
+        assert!(
+            matches!(km.resolve(&modes, &[], &p("h", false), available), Resolution::Run(b) if b.action == "pane.resize")
+        );
         assert_eq!(km.resolve(&modes, &[], &p("x", false), available), Resolution::Swallow);
         assert_eq!(km.config_path, "/x/init.lua");
     }
@@ -854,7 +1338,10 @@ mod tests {
     #[test]
     fn builds_key_events_for_send_key() {
         let ev = key_event_of(&parse_key("ctrl+l").unwrap());
-        assert_eq!((ev["key"].as_str(), ev["mods"].as_str(), ev["text"].as_str()), (Some("key_l"), Some("ctrl"), Some("")));
+        assert_eq!(
+            (ev["key"].as_str(), ev["mods"].as_str(), ev["text"].as_str()),
+            (Some("key_l"), Some("ctrl"), Some(""))
+        );
         let ev = key_event_of(&parse_key("shift+a").unwrap());
         assert_eq!((ev["text"].as_str(), ev["consumed_mods"].as_str()), (Some("A"), Some("shift")));
         assert_eq!(key_event_of(&parse_key("left").unwrap())["key"], "arrow_left");

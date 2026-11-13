@@ -49,11 +49,7 @@ pub struct RpcError {
 
 impl RpcError {
     fn disconnected() -> Self {
-        RpcError {
-            code: "disconnected".into(),
-            message: "the control connection closed".into(),
-            status: 0,
-        }
+        RpcError { code: "disconnected".into(), message: "the control connection closed".into(), status: 0 }
     }
 }
 
@@ -117,10 +113,7 @@ pub async fn connect(endpoint: &Endpoint, hello: Hello) -> Result<Connection> {
     ws.send(Message::text(text)).await?;
 
     let welcome = loop {
-        let m = ws
-            .next()
-            .await
-            .context("server closed the connection before its welcome")??;
+        let m = ws.next().await.context("server closed the connection before its welcome")??;
         match m {
             Message::Text(t) => break parse_welcome(t.as_str())?,
             Message::Close(frame) => bail!("server refused the connection: {frame:?}"),
@@ -130,18 +123,9 @@ pub async fn connect(endpoint: &Endpoint, hello: Hello) -> Result<Connection> {
 
     let (out_tx, out_rx) = async_channel::unbounded::<String>();
     let (ev_tx, ev_rx) = async_channel::unbounded::<ControlEvent>();
-    let inner = Arc::new(Inner {
-        out: out_tx,
-        pending: Mutex::new(HashMap::new()),
-        next_id: AtomicU64::new(1),
-    });
+    let inner = Arc::new(Inner { out: out_tx, pending: Mutex::new(HashMap::new()), next_id: AtomicU64::new(1) });
     let driver = drive(ws, out_rx, inner.clone(), ev_tx).boxed();
-    Ok(Connection {
-        control: Control { inner },
-        welcome,
-        events: ev_rx,
-        driver,
-    })
+    Ok(Connection { control: Control { inner }, welcome, events: ev_rx, driver })
 }
 
 fn parse_welcome(text: &str) -> Result<Welcome> {
@@ -269,11 +253,7 @@ impl Control {
         block_id: &str,
         args: Value,
     ) -> Result<Value, RpcError> {
-        self.call(
-            method,
-            json!({"session_id": session_id, "block_id": block_id, "args": args}),
-        )
-        .await
+        self.call(method, json!({"session_id": session_id, "block_id": block_id, "args": args})).await
     }
 
     /// Queues a request without waiting for its response. Used for input,

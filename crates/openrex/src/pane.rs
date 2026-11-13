@@ -3,15 +3,14 @@
 use std::time::Duration;
 
 use gpui::{
-    App, BorderStyle, Bounds, ClipboardItem, ContentMask, Context, FocusHandle, Font, FontStyle,
-    FontWeight, Hsla, InteractiveElement, IntoElement, KeyDownEvent, Modifiers, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, Rgba,
-    ScrollDelta, ScrollWheelEvent, SharedString, Styled, Task, TextRun,
-    UnderlineStyle, Window, canvas, div, fill, font, outline, point, px, size,
+    App, BorderStyle, Bounds, ClipboardItem, ContentMask, Context, FocusHandle, Font, FontStyle, FontWeight, Hsla,
+    InteractiveElement, IntoElement, KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, ParentElement, Pixels, Point, Render, Rgba, ScrollDelta, ScrollWheelEvent, SharedString, Styled,
+    Task, TextRun, UnderlineStyle, Window, canvas, div, fill, font, outline, point, px, size,
 };
+use openrex_proto::Endpoint;
 use openrex_proto::control::Control;
 use openrex_proto::data::{DataConn, DataError, TERMINAL_SUBPROTOCOL};
-use openrex_proto::Endpoint;
 use serde_json::{Value, json};
 
 use crate::graphics::Layer;
@@ -122,15 +121,14 @@ impl Pane {
         cx.spawn({
             let (control, session_id, block_id) = (control.clone(), session_id.clone(), block_id.clone());
             async move |this, cx| {
-                let title = control
-                    .block_call("com.superlogical.terminal.title", &session_id, &block_id, json!({}))
-                    .await;
+                let title =
+                    control.block_call("com.superlogical.terminal.title", &session_id, &block_id, json!({})).await;
                 let pwd = control.block_call("com.superlogical.terminal.pwd", &session_id, &block_id, json!({})).await;
                 this.update(cx, |pane, cx| {
-                    if let Some(title) = title.ok().and_then(|v| v["title"].as_str().map(str::to_string)) {
-                        if pane.title.is_empty() {
-                            pane.title = title;
-                        }
+                    if let Some(title) = title.ok().and_then(|v| v["title"].as_str().map(str::to_string))
+                        && pane.title.is_empty()
+                    {
+                        pane.title = title;
                     }
                     if let Some(pwd) = pwd.ok().and_then(|v| v["pwd"].as_str().map(path_of_pwd)) {
                         pane.cwd.get_or_insert(pwd);
@@ -266,14 +264,18 @@ impl Pane {
         !modifiers.shift && self.mirror.as_ref().is_some_and(|m| m.is_mouse_tracking())
     }
 
-    fn send_mouse(&mut self, action: &str, button: Option<MouseButton>, position: Point<Pixels>, modifiers: &Modifiers) {
+    fn send_mouse(
+        &mut self,
+        action: &str,
+        button: Option<MouseButton>,
+        position: Point<Pixels>,
+        modifiers: &Modifiers,
+    ) {
         let Some((col, row)) = self.cell_at(position) else { return };
         let Some((cols, rows)) = self.grid_size() else { return };
         let (col, row) = (col.clamp(0, cols as i32 - 1), row.clamp(0, rows as i32 - 1));
-        if action == "motion" {
-            if self.reported_cell == Some((col, row)) {
-                return;
-            }
+        if action == "motion" && self.reported_cell == Some((col, row)) {
+            return;
         }
         self.reported_cell = Some((col, row));
         let name = button.and_then(button_name);
@@ -306,10 +308,8 @@ impl Pane {
             mirror.scroll_to_bottom();
             mirror.clear_selection();
         }
-        self.control.send_nowait(
-            "client.key",
-            json!({"session_id": self.session_id, "block_id": self.block_id, "key": key}),
-        );
+        self.control
+            .send_nowait("client.key", json!({"session_id": self.session_id, "block_id": self.block_id, "key": key}));
         cx.stop_propagation();
         cx.notify();
     }
@@ -317,10 +317,8 @@ impl Pane {
     fn on_mouse_down(&mut self, ev: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if !self.focus.is_focused(window) {
             window.focus(&self.focus);
-            self.control.send_nowait(
-                "session.focus_block",
-                json!({"session_id": self.session_id, "block_id": self.block_id}),
-            );
+            self.control
+                .send_nowait("session.focus_block", json!({"session_id": self.session_id, "block_id": self.block_id}));
         }
         if self.links.on_mouse_down(ev, self.cell_at(ev.position)) {
             cx.notify();
@@ -428,10 +426,7 @@ impl Pane {
         let font_size = px(self.settings.font_size);
         let text_system = window.text_system();
         let font_id = text_system.resolve_font(&font);
-        let cell_w = text_system
-            .advance(font_id, font_size, 'm')
-            .map(|s| s.width)
-            .unwrap_or(font_size * 0.6);
+        let cell_w = text_system.advance(font_id, font_size, 'm').map(|s| s.width).unwrap_or(font_size * 0.6);
         let line_h = (font_size * 1.3).round();
         let ascent = text_system.ascent(font_id, font_size);
         let descent = text_system.descent(font_id, font_size).abs();
@@ -659,10 +654,8 @@ fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut 
                 let top = origin.y + line_h * row as f32;
                 for span in &line.bgs {
                     let (left, right) = (x_of(span.col).floor(), x_of(span.col + span.width).ceil());
-                    window.paint_quad(fill(
-                        Bounds::new(point(left, top), size(right - left, line_h)),
-                        hsla(span.color),
-                    ));
+                    window
+                        .paint_quad(fill(Bounds::new(point(left, top), size(right - left, line_h)), hsla(span.color)));
                 }
             }
             // Every row's backgrounds go down before any text, so an image
@@ -686,12 +679,8 @@ fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut 
                     };
                     // Plain ASCII is pinned to the grid, one glyph per cell.
                     let pin = span.text.is_ascii().then_some(cell_w);
-                    let shaped = window.text_system().shape_line(
-                        SharedString::from(span.text.clone()),
-                        font_size,
-                        &[run],
-                        pin,
-                    );
+                    let shaped =
+                        window.text_system().shape_line(SharedString::from(span.text.clone()), font_size, &[run], pin);
                     shaped.paint(point(x_of(span.col), top), line_h, window, cx).ok();
                     if span.decorated() {
                         let (left, right) = (x_of(span.col), x_of(span.col + span.width));
@@ -780,7 +769,13 @@ impl Render for Pane {
                     move |bounds, window, cx| {
                         entity.update(cx, |pane, cx| {
                             let data = pane.layout(bounds, window, cx);
-                            let overlay = pane.ime.prepaint(data.frame.as_ref(), data.origin, &data.metrics, &data.font, data.focused);
+                            let overlay = pane.ime.prepaint(
+                                data.frame.as_ref(),
+                                data.origin,
+                                &data.metrics,
+                                &data.font,
+                                data.focused,
+                            );
                             (data, overlay)
                         })
                     },

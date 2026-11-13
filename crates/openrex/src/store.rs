@@ -5,9 +5,9 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use gpui::{AppContext, AsyncApp, Context, Entity, Task, WeakEntity};
+use openrex_proto::Endpoint;
 use openrex_proto::control::{self, Control, ControlEvent, Hello};
 use openrex_proto::types::{SessionView, Window};
-use openrex_proto::Endpoint;
 use serde_json::{Value, json};
 
 use crate::keymap::{self, Keymap};
@@ -165,12 +165,12 @@ impl Store {
         self.sessions = parse_sessions(&boot["attach_all"]["sessions"]);
         crate::activity::bootstrap(self, cx);
         let selected = &boot["selected_session"];
-        if let Ok(view) = serde_json::from_value::<SessionView>(selected["view"].clone()) {
-            if let Some(id) = view.session_id.clone() {
-                self.current = Some(id.clone());
-                self.apply_view(view, cx);
-                self.own_blocks(&id, None, cx);
-            }
+        if let Ok(view) = serde_json::from_value::<SessionView>(selected["view"].clone())
+            && let Some(id) = view.session_id.clone()
+        {
+            self.current = Some(id.clone());
+            self.apply_view(view, cx);
+            self.own_blocks(&id, None, cx);
         }
         if self.sessions.is_empty() {
             // A server with nothing running: start a first session.
@@ -203,7 +203,11 @@ impl Store {
                         .flatten()
                         .map(|d| {
                             let source = d["source"].as_str().map(|s| format!("{s}: ")).unwrap_or_default();
-                            format!("{} {source}{}", d["severity"].as_str().unwrap_or("warning"), d["message"].as_str().unwrap_or(""))
+                            format!(
+                                "{} {source}{}",
+                                d["severity"].as_str().unwrap_or("warning"),
+                                d["message"].as_str().unwrap_or("")
+                            )
                         })
                         .collect();
                 }
@@ -274,7 +278,8 @@ impl Store {
                 // OpenRex never offers other servers to an action, so it can't
                 // make the call. Answer at once so the action doesn't wait.
                 if let Some(call_id) = ev.payload["call_id"].as_str() {
-                    let err = ("not_supported".to_string(), "OpenRex doesn't call other servers for actions".to_string());
+                    let err =
+                        ("not_supported".to_string(), "OpenRex doesn't call other servers for actions".to_string());
                     self.reply(call_id, Err(err));
                 }
             }
@@ -327,7 +332,14 @@ impl Store {
                 let Some(block_id) = p["block_id"].as_str() else { return };
                 let payload = &p["payload"];
                 self.activity.on_event(session_id, block_id, p["name"].as_str().unwrap_or(""), payload);
-                crate::inspect::on_block_event(self, session_id, block_id, p["name"].as_str().unwrap_or(""), payload, cx);
+                crate::inspect::on_block_event(
+                    self,
+                    session_id,
+                    block_id,
+                    p["name"].as_str().unwrap_or(""),
+                    payload,
+                    cx,
+                );
                 match p["name"].as_str().unwrap_or("") {
                     "title_changed" => {
                         let title = payload["title"].as_str().unwrap_or("").to_string();
@@ -459,13 +471,13 @@ impl Store {
                     if block.creator_name != "com.superlogical.terminal" {
                         continue;
                     }
-                    if !self.panes.contains_key(block_id) {
-                        if let Some(control) = self.control.clone() {
-                            let (endpoint, settings) = (self.endpoint.clone(), self.settings.clone());
-                            let (sid, bid) = (session_id.clone(), block_id.clone());
-                            let pane = cx.new(|cx| Pane::new(sid, bid, control, endpoint, settings, cx));
-                            self.panes.insert(block_id.clone(), pane);
-                        }
+                    if !self.panes.contains_key(block_id)
+                        && let Some(control) = self.control.clone()
+                    {
+                        let (endpoint, settings) = (self.endpoint.clone(), self.settings.clone());
+                        let (sid, bid) = (session_id.clone(), block_id.clone());
+                        let pane = cx.new(|cx| Pane::new(sid, bid, control, endpoint, settings, cx));
+                        self.panes.insert(block_id.clone(), pane);
                     }
                 }
             }
@@ -726,10 +738,7 @@ fn notify_desktop(title: &str, body: &str) {
     let (summary, body) = (summary.to_string(), body.to_string());
     // Wait for the command on its own thread, so it doesn't linger as a zombie.
     std::thread::spawn(move || {
-        std::process::Command::new("notify-send")
-            .args(["--app-name=OpenRex", "--", &summary, &body])
-            .status()
-            .ok();
+        std::process::Command::new("notify-send").args(["--app-name=OpenRex", "--", &summary, &body]).status().ok();
     });
 }
 

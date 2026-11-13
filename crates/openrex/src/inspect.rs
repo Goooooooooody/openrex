@@ -7,7 +7,10 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use gpui::{App, ClickEvent, Context, Div, InteractiveElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, px, rgb};
+use gpui::{
+    App, ClickEvent, Context, Div, InteractiveElement, ParentElement, SharedString, StatefulInteractiveElement, Styled,
+    Window, div, px, rgb,
+};
 use openrex_proto::control::{Control, RpcError};
 use serde_json::{Value, json};
 
@@ -67,7 +70,14 @@ pub async fn read_all(
 
 /// The text a `clipboard_written` or `selection_copied` event left out
 /// because it was too large: read it and put it on the clipboard.
-pub fn fetch_copy(store: &mut Store, session: &str, block: &str, payload: &Value, method: &'static str, cx: &mut Context<Store>) {
+pub fn fetch_copy(
+    store: &mut Store,
+    session: &str,
+    block: &str,
+    payload: &Value,
+    method: &'static str,
+    cx: &mut Context<Store>,
+) {
     let Some(control) = store.control() else { return };
     let (session, block) = (session.to_string(), block.to_string());
     let mut args = json!({"max_bytes": 983_040});
@@ -93,7 +103,14 @@ pub fn fetch_copy(store: &mut Store, session: &str, block: &str, payload: &Value
 }
 
 /// Handles the block events this module cares about.
-pub fn on_block_event(store: &mut Store, session: &str, block: &str, name: &str, payload: &Value, cx: &mut Context<Store>) {
+pub fn on_block_event(
+    store: &mut Store,
+    session: &str,
+    block: &str,
+    name: &str,
+    payload: &Value,
+    cx: &mut Context<Store>,
+) {
     match name {
         // Text a program copied, too large for the event.
         "clipboard_written" if payload["text"].as_str().is_none() && payload["bytes"].as_u64().unwrap_or(0) > 0 => {
@@ -132,8 +149,11 @@ pub fn check_echo(store: &mut Store, session: &str, block: &str, cx: &mut Contex
             // A password prompt reads a line without echo. A full-screen
             // program also turns echo off, but reads keys raw, so only echo
             // off in line mode counts.
-            let off = result.ok().is_some_and(|v| v["echo"].as_bool() == Some(false) && v["canonical"].as_bool() == Some(true));
-            let changed = if off { store.inspect.echo_off.insert(block) } else { store.inspect.echo_off.remove(&block) };
+            let off = result
+                .ok()
+                .is_some_and(|v| v["echo"].as_bool() == Some(false) && v["canonical"].as_bool() == Some(true));
+            let changed =
+                if off { store.inspect.echo_off.insert(block) } else { store.inspect.echo_off.remove(&block) };
             if changed {
                 cx.notify();
             }
@@ -148,7 +168,9 @@ pub fn check_echo(store: &mut Store, session: &str, block: &str, cx: &mut Contex
 /// moment later.
 pub fn after_enter(ws: &mut Workspace, cx: &mut Context<Workspace>) {
     let Some(view) = ws.view(cx) else { return };
-    let (Some(session), Some(block)) = (view.session_id.clone(), focused_block(&view).map(str::to_string)) else { return };
+    let (Some(session), Some(block)) = (view.session_id.clone(), focused_block(&view).map(str::to_string)) else {
+        return;
+    };
     let store = ws.store.clone();
     cx.spawn(async move |_, cx| {
         cx.background_executor().timer(Duration::from_millis(250)).await;
@@ -196,17 +218,19 @@ pub(crate) fn perform(
         let text = match text {
             Ok(t) => t,
             Err(e) => {
-                store.update(cx, |s, cx| {
-                    s.error = Some(format!("{action}: {}", e.message));
-                    cx.notify();
-                })
-                .ok();
+                store
+                    .update(cx, |s, cx| {
+                        s.error = Some(format!("{action}: {}", e.message));
+                        cx.notify();
+                    })
+                    .ok();
                 return;
             }
         };
         if action == "pane.save_scrollback" {
             let path = path.map(std::path::PathBuf::from).unwrap_or_else(|| save_path(&label));
-            let result = path.parent().map(std::fs::create_dir_all).transpose().and_then(|_| std::fs::write(&path, &text));
+            let result =
+                path.parent().map(std::fs::create_dir_all).transpose().and_then(|_| std::fs::write(&path, &text));
             store
                 .update(cx, |s, cx| {
                     match result {
@@ -243,10 +267,8 @@ fn save_path(title: &str) -> std::path::PathBuf {
 
 /// A title made safe for a file name, or `scrollback` if nothing is left.
 fn file_safe(title: &str) -> String {
-    let cleaned: String = title
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '-' })
-        .collect();
+    let cleaned: String =
+        title.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '-' }).collect();
     let trimmed: String = cleaned.split('-').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-");
     // No leading dot, which would hide the file, and nothing made only of
     // dots and dashes, such as "..".
@@ -259,17 +281,24 @@ fn file_safe(title: &str) -> String {
 fn describe_process(p: &Value) -> Option<String> {
     let name = p["script"].as_str().or(p["argv0"].as_str()).or(p["name"].as_str())?;
     let mut out = format!("{name} (pid {})", p["pid"].as_u64().unwrap_or(0));
-    if let Some(user) = p["user"].as_str() {
-        if std::env::var("USER").ok().as_deref() != Some(user) {
-            out.push_str(&format!(" as {user}"));
-        }
+    if let Some(user) = p["user"].as_str()
+        && std::env::var("USER").ok().as_deref() != Some(user)
+    {
+        out.push_str(&format!(" as {user}"));
     }
     Some(out)
 }
 
 /// The lines of the Pane Info palette, from the results of `process`,
 /// `size`, `modes`, and `input_mode`.
-fn info_lines(title: &str, cwd: Option<&str>, process: &Value, size: &Value, modes: &Value, input: &Value) -> Vec<(String, String)> {
+fn info_lines(
+    title: &str,
+    cwd: Option<&str>,
+    process: &Value,
+    size: &Value,
+    modes: &Value,
+    input: &Value,
+) -> Vec<(String, String)> {
     let mut out = Vec::new();
     if !title.is_empty() {
         out.push(("Title".into(), title.to_string()));
@@ -293,7 +322,10 @@ fn info_lines(title: &str, cwd: Option<&str>, process: &Value, size: &Value, mod
         out.push(("Exited".into(), format!("code {code}{why}")));
     }
     if let (Some(c), Some(r)) = (size["columns"].as_u64(), size["rows"].as_u64()) {
-        let owner = size["owner"].as_str().map(|o| format!(", owned by {}", short_id(o))).unwrap_or_else(|| ", no owner".into());
+        let owner = size["owner"]
+            .as_str()
+            .map(|o| format!(", owned by {}", short_id(o)))
+            .unwrap_or_else(|| ", no owner".into());
         out.push(("Size".into(), format!("{c}×{r}{owner}")));
     }
     if modes["screen"].as_str() == Some("alternate") {
@@ -333,7 +365,9 @@ fn short_id(id: &str) -> String {
 /// Pane Info: what the focused terminal is running and how it's set up.
 /// Choosing a line copies its value.
 fn open_info(ws: &mut Workspace, target: &Target, cx: &mut Context<Workspace>) -> Outcome {
-    let Some((session, block)) = locate(ws, target, cx) else { return Err(("conflict".into(), "no pane is focused".into())) };
+    let Some((session, block)) = locate(ws, target, cx) else {
+        return Err(("conflict".into(), "no pane is focused".into()));
+    };
     let Some(control) = ws.store.read(cx).control() else { return Ok(Value::Null) };
     let (title, cwd) = ws
         .store
@@ -352,14 +386,14 @@ fn open_info(ws: &mut Workspace, target: &Target, cx: &mut Context<Workspace>) -
         let mut lines = info_lines(&title, cwd.as_deref(), &process, &size, &modes, &input);
         lines.push(("Block".into(), block.clone()));
         this.update(cx, |ws, cx| {
-            if let Some(p) = &mut ws.palette {
-                if p.title == "Pane Info" {
-                    p.items = lines
-                        .into_iter()
-                        .map(|(k, v)| Item::new(k, "pane.info_copy", json!({"text": v})).detail(v))
-                        .collect();
-                    p.empty = "The server said nothing about this pane".into();
-                }
+            if let Some(p) = &mut ws.palette
+                && p.title == "Pane Info"
+            {
+                p.items = lines
+                    .into_iter()
+                    .map(|(k, v)| Item::new(k, "pane.info_copy", json!({"text": v})).detail(v))
+                    .collect();
+                p.empty = "The server said nothing about this pane".into();
             }
             cx.notify();
         })
@@ -370,7 +404,12 @@ fn open_info(ws: &mut Workspace, target: &Target, cx: &mut Context<Workspace>) -
 }
 
 /// Copies one line of Pane Info.
-pub(crate) fn perform_copy(ws: &mut Workspace, action: &str, args: &Value, cx: &mut Context<Workspace>) -> Option<Outcome> {
+pub(crate) fn perform_copy(
+    ws: &mut Workspace,
+    action: &str,
+    args: &Value,
+    cx: &mut Context<Workspace>,
+) -> Option<Outcome> {
     if action != "pane.info_copy" {
         return None;
     }
@@ -381,7 +420,12 @@ pub(crate) fn perform_copy(ws: &mut Workspace, action: &str, args: &Value, cx: &
 
 /// A card for a block OpenRex can't draw as a terminal: Rex's onboarding
 /// walkthrough, or a block of a kind it doesn't know.
-pub fn block_card(ws: &Workspace, session: &str, block: &openrex_proto::types::Block, cx: &mut Context<Workspace>) -> Div {
+pub fn block_card(
+    ws: &Workspace,
+    session: &str,
+    block: &openrex_proto::types::Block,
+    cx: &mut Context<Workspace>,
+) -> Div {
     let Some(block_id) = block.block_id.clone() else { return div() };
     let onboarding = block.creator_name == ONBOARDING;
     if onboarding {
@@ -393,20 +437,36 @@ pub fn block_card(ws: &Workspace, session: &str, block: &openrex_proto::types::B
             Some("") | None => "the first step".to_string(),
             Some(s) => format!("step “{s}”"),
         };
-        ("Rex walkthrough".to_string(), format!("Rex's onboarding walkthrough is on {step}. It is drawn by Rex.app; OpenRex can restart it or close it."))
+        (
+            "Rex walkthrough".to_string(),
+            format!(
+                "Rex's onboarding walkthrough is on {step}. It is drawn by Rex.app; OpenRex can restart it or close it."
+            ),
+        )
     } else {
         (block.creator_name.clone(), "OpenRex doesn't know how to show this kind of block.".to_string())
     };
     let button = |id: &'static str, label: &'static str| {
-        div().id(id).px_3().py_1().border_1().border_color(rgb(0x2a2c3d)).rounded_md().cursor_pointer().hover(|s| s.bg(rgb(0x24263a))).child(label)
+        div()
+            .id(id)
+            .px_3()
+            .py_1()
+            .border_1()
+            .border_color(rgb(0x2a2c3d))
+            .rounded_md()
+            .cursor_pointer()
+            .hover(|s| s.bg(rgb(0x24263a)))
+            .child(label)
     };
     let (s1, b1, s2, b2) = (session.to_string(), block_id.clone(), session.to_string(), block_id.clone());
     let mut buttons = div().flex().gap_2();
     if onboarding {
-        buttons = buttons.child(button("onboarding-restart", "Start over").on_click(cx.listener(move |ws, _: &ClickEvent, _, cx| {
-            let args = json!({"session_id": s1, "block_id": b1, "args": {"step": ""}});
-            ws.store.update(cx, |s, cx| s.request("com.superlogical.onboarding.set_step", args, cx));
-        })));
+        buttons = buttons.child(button("onboarding-restart", "Start over").on_click(cx.listener(
+            move |ws, _: &ClickEvent, _, cx| {
+                let args = json!({"session_id": s1, "block_id": b1, "args": {"step": ""}});
+                ws.store.update(cx, |s, cx| s.request("com.superlogical.onboarding.set_step", args, cx));
+            },
+        )));
     }
     buttons = buttons.child(button("block-close", "Close").on_click(cx.listener(move |ws, _: &ClickEvent, _, cx| {
         ws.store.update(cx, |s, cx| s.request("block.close", json!({"session_id": s2, "block_id": b2}), cx));

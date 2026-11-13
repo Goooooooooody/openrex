@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 
 use gpui::{Keystroke, Modifiers};
 use openrex::keys::rex_key;
-use openrex_proto::control::{self, Control, Hello};
 use openrex_proto::Endpoint;
+use openrex_proto::control::{self, Control, Hello};
 use serde_json::{Value, json};
 
 struct Live {
@@ -196,17 +196,11 @@ fn mouse_and_wheel_reach_a_program_that_asks_for_them() {
         live.expect("^[[<16;1;1M").await;
 
         // Wheel up is a negative delta_y, and reports button 64.
-        live.event(
-            "wheel",
-            json!({"delta_mode": "line", "delta_x": 0, "delta_y": -1, "x": 2, "y": 1, "mods": ""}),
-        )
-        .await;
+        live.event("wheel", json!({"delta_mode": "line", "delta_x": 0, "delta_y": -1, "x": 2, "y": 1, "mods": ""}))
+            .await;
         live.expect("^[[<64;").await;
-        live.event(
-            "wheel",
-            json!({"delta_mode": "line", "delta_x": 0, "delta_y": 1, "x": 2, "y": 1, "mods": ""}),
-        )
-        .await;
+        live.event("wheel", json!({"delta_mode": "line", "delta_x": 0, "delta_y": 1, "x": 2, "y": 1, "mods": ""}))
+            .await;
         live.expect("^[[<65;").await;
         live.finish().await;
     });

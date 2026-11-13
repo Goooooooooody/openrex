@@ -57,7 +57,11 @@ pub enum Suggest {
     None,
     /// Directories, and files too if `files`, below the typed path, listed
     /// by the terminal `block_id`.
-    Paths { session_id: String, block_id: String, files: bool },
+    Paths {
+        session_id: String,
+        block_id: String,
+        files: bool,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -124,12 +128,8 @@ impl Palette {
         if words.is_empty() {
             return self.items.iter().collect();
         }
-        let mut scored: Vec<(usize, usize, &Item)> = self
-            .items
-            .iter()
-            .enumerate()
-            .filter_map(|(i, item)| score(item, &words).map(|s| (s, i, item)))
-            .collect();
+        let mut scored: Vec<(usize, usize, &Item)> =
+            self.items.iter().enumerate().filter_map(|(i, item)| score(item, &words).map(|s| (s, i, item))).collect();
         scored.sort_by_key(|(s, i, _)| (*s, *i));
         scored.into_iter().map(|(_, _, item)| item).collect()
     }
@@ -154,10 +154,10 @@ impl Palette {
         match &self.kind {
             Kind::Pick => visible.get(self.selected).map(|item| (item.action.clone(), item.args.clone())),
             Kind::Input { action, args, arg } => {
-                if self.query.trim().is_empty() {
-                    if let Some(item) = visible.get(self.selected) {
-                        return Some((item.action.clone(), item.args.clone()));
-                    }
+                if self.query.trim().is_empty()
+                    && let Some(item) = visible.get(self.selected)
+                {
+                    return Some((item.action.clone(), item.args.clone()));
                 }
                 let mut args = if args.is_object() { args.clone() } else { json!({}) };
                 args[arg.as_str()] = json!(self.query);
@@ -205,7 +205,7 @@ fn subsequence(hay: &str, needle: &str) -> bool {
 
 /// Removes the last word of `s`, as Ctrl+Backspace does.
 pub fn delete_word(s: &mut String) {
-    let trimmed = s.trim_end_matches(|c: char| c == ' ' || c == '/').len();
+    let trimmed = s.trim_end_matches([' ', '/']).len();
     s.truncate(trimmed);
     let cut = s.rfind([' ', '/']).map(|i| i + 1).unwrap_or(0);
     s.truncate(cut);

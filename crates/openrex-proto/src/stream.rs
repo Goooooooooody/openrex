@@ -13,17 +13,9 @@ const MAX_MESSAGE: usize = 256 * 1024;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RexMessage {
-    Resize {
-        cols: u16,
-        rows: u16,
-        cell_width_px: u32,
-        cell_height_px: u32,
-        owner: Option<String>,
-    },
+    Resize { cols: u16, rows: u16, cell_width_px: u32, cell_height_px: u32, owner: Option<String> },
     Theme(Value),
-    ChildExited {
-        exit_code: i64,
-    },
+    ChildExited { exit_code: i64 },
     Unknown(Value),
 }
 
@@ -116,9 +108,7 @@ fn parse_message(json: &[u8]) -> RexMessage {
             owner: v["owner"].as_str().map(str::to_string),
         },
         Some("theme") => RexMessage::Theme(v),
-        Some("child_exited") => RexMessage::ChildExited {
-            exit_code: v["exit_code"].as_i64().unwrap_or(0),
-        },
+        Some("child_exited") => RexMessage::ChildExited { exit_code: v["exit_code"].as_i64().unwrap_or(0) },
         _ => RexMessage::Unknown(v),
     }
 }
@@ -132,13 +122,7 @@ mod tests {
     }
 
     fn resize(cols: u16, rows: u16) -> StreamItem {
-        StreamItem::Rex(RexMessage::Resize {
-            cols,
-            rows,
-            cell_width_px: 0,
-            cell_height_px: 0,
-            owner: None,
-        })
+        StreamItem::Rex(RexMessage::Resize { cols, rows, cell_width_px: 0, cell_height_px: 0, owner: None })
     }
 
     const MSG: &str = "\x1b_rex1;42;{\"type\":\"resize\",\"cols\":80,\"rows\":24}\x1b\\";

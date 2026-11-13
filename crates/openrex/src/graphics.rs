@@ -56,10 +56,10 @@ thread_local! {
 /// thread that writes to the terminal, so this runs before each copy is fed.
 pub(crate) fn install_png_decoder() {
     PNG_DECODER.with(|installed| {
-        if !installed.replace(true) {
-            if let Err(e) = set_png_decoder(Some(Box::new(RustPngDecoder::new()))) {
-                log::warn!("PNG images won't show: {e:?}");
-            }
+        if !installed.replace(true)
+            && let Err(e) = set_png_decoder(Some(Box::new(RustPngDecoder::new())))
+        {
+            log::warn!("PNG images won't show: {e:?}");
         }
     });
 }
@@ -147,12 +147,7 @@ pub fn placements(term: &Terminal) -> Vec<Placement> {
             y_offset: p.y_offset().unwrap_or(0),
             width: info.pixel_width,
             height: info.pixel_height,
-            source: Rect {
-                x: info.source_x,
-                y: info.source_y,
-                width: info.source_width,
-                height: info.source_height,
-            },
+            source: Rect { x: info.source_x, y: info.source_y, width: info.source_width, height: info.source_height },
         });
     }
     // Stable, so placements with the same z-index keep the engine's order.
@@ -283,17 +278,21 @@ pub struct Layout {
 impl Images {
     /// Reads the placements in the view and makes sure each has a texture.
     /// Textures no placement in the view uses are let go.
-    pub fn layout(&mut self, mirror: Option<&Mirror>, origin: Point<Pixels>, metrics: &Metrics, window: &mut Window) -> Layout {
+    pub fn layout(
+        &mut self,
+        mirror: Option<&Mirror>,
+        origin: Point<Pixels>,
+        metrics: &Metrics,
+        window: &mut Window,
+    ) -> Layout {
         let mut layout = Layout::default();
         let mut used = HashSet::new();
         if let Some(term) = mirror.filter(|m| m.is_live()).map(Mirror::terminal) {
             let placements = placements(term);
             if !placements.is_empty() {
                 let (cols, rows) = (term.cols().unwrap_or(0), term.rows().unwrap_or(0));
-                layout.clip = Some(Bounds::new(
-                    origin,
-                    size(metrics.cell_w * cols as f32, metrics.line_h * rows as f32),
-                ));
+                layout.clip =
+                    Some(Bounds::new(origin, size(metrics.cell_w * cols as f32, metrics.line_h * rows as f32)));
                 let term_cell = cell_px(term);
                 let cell = (f32::from(metrics.cell_w), f32::from(metrics.line_h));
                 for p in &placements {
@@ -422,11 +421,10 @@ mod tests {
     fn decodes_png() {
         // A 1 by 1 PNG of opaque pure blue.
         let png: &[u8] = &[
-            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00,
-            0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xde, 0x00,
-            0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x60, 0x60, 0xf8, 0x0f, 0x00, 0x01, 0x03,
-            0x01, 0x00, 0x08, 0x89, 0xc2, 0xec, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60,
-            0x82,
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00,
+            0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xde, 0x00, 0x00, 0x00,
+            0x0c, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x60, 0x60, 0xf8, 0x0f, 0x00, 0x01, 0x03, 0x01, 0x00, 0x08,
+            0x89, 0xc2, 0xec, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
         ];
         let mut m = mirror();
         m.feed(&transmit("i=3,f=100", png));

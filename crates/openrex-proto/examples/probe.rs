@@ -79,8 +79,7 @@ async fn run(out: String, secs: u64) -> Result<()> {
         )
         .await?;
     println!("ticket: expires_in_ms={}", ticket["expires_in_ms"]);
-    let mut data =
-        DataConn::open(&endpoint, TERMINAL_SUBPROTOCOL, ticket["ticket"].as_str().unwrap()).await?;
+    let mut data = DataConn::open(&endpoint, TERMINAL_SUBPROTOCOL, ticket["ticket"].as_str().unwrap()).await?;
     println!("data welcome: nonce={} keep_ms={}", data.nonce, data.keep_ms);
 
     let mut raw = std::fs::File::create(&out)?;

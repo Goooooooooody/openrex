@@ -15,9 +15,9 @@ use std::time::Duration;
 use anyhow::{Context as _, Result, bail};
 use futures::future::{Either, select};
 use gpui::{App, Context, ExternalPaths, PathPromptOptions, Task, Window};
+use openrex_proto::Endpoint;
 use openrex_proto::control::Control;
 use openrex_proto::data::{ByteStream, MAX_CHUNK, new_ref, random_uuid};
-use openrex_proto::Endpoint;
 use serde_json::{Value, json};
 
 use crate::actions::{Outcome, Target, shell_quote};
@@ -161,7 +161,13 @@ enum Sent {
     Local(String, usize),
 }
 
-pub(crate) fn start_upload(ws: &mut Workspace, session: String, block: String, paths: Vec<PathBuf>, cx: &mut Context<Workspace>) {
+pub(crate) fn start_upload(
+    ws: &mut Workspace,
+    session: String,
+    block: String,
+    paths: Vec<PathBuf>,
+    cx: &mut Context<Workspace>,
+) {
     let store = ws.store.clone();
     let files = match local_files(&paths) {
         Ok(files) => files,
@@ -194,7 +200,11 @@ pub(crate) fn start_upload(ws: &mut Workspace, session: String, block: String, p
     });
     watch(store, job, progress, format!("Uploading {what}"), cx, move |store, result, cx| match result {
         Ok(Sent::Uploaded(n)) => {
-            let what = if n == 1 { "the file, and the terminal typed its path".to_string() } else { format!("{n} files, and the terminal typed their paths") };
+            let what = if n == 1 {
+                "the file, and the terminal typed its path".to_string()
+            } else {
+                format!("{n} files, and the terminal typed their paths")
+            };
             show_notice(store, format!("Uploaded {what}"), cx);
         }
         Ok(Sent::Local(text, n)) => {
@@ -221,7 +231,12 @@ fn paste(store: &gpui::Entity<Store>, block: &str, text: String, cx: &mut App) {
 
 fn block_session(store: &Store, block: &str) -> Option<String> {
     store.views.iter().find_map(|(id, view)| {
-        let has = view.windows.iter().flat_map(|w| &w.layers).flat_map(|l| &l.blocks).any(|b| b.block_id.as_deref() == Some(block));
+        let has = view
+            .windows
+            .iter()
+            .flat_map(|w| &w.layers)
+            .flat_map(|l| &l.blocks)
+            .any(|b| b.block_id.as_deref() == Some(block));
         has.then(|| id.clone())
     })
 }
@@ -634,14 +649,19 @@ mod tests {
     fn round_trip_through_the_server() {
         smol::block_on(async {
             let endpoint = Endpoint::from_env().unwrap();
-            let hello = openrex_proto::Hello { name: "openrex-transfer-test".into(), version: "0".into(), ..Default::default() };
+            let hello = openrex_proto::Hello {
+                name: "openrex-transfer-test".into(),
+                version: "0".into(),
+                ..Default::default()
+            };
             let conn = openrex_proto::control::connect(&endpoint, hello).await.unwrap();
             let control = conn.control.clone();
             smol::spawn(conn.driver).detach();
 
             let work = std::env::temp_dir().join(format!("openrex-transfer-{}", random_uuid()));
             std::fs::create_dir_all(work.join("down")).unwrap();
-            let layout = json!({"block": {"flavor": crate::store::SHELL_FLAVOR, "options": {"cwd": work.to_string_lossy()}}});
+            let layout =
+                json!({"block": {"flavor": crate::store::SHELL_FLAVOR, "options": {"cwd": work.to_string_lossy()}}});
             let made = control
                 .call("session.create", json!({"label": format!("openrex-transfer-test-{}", &random_uuid()[..8]), "initial_windows": [{"layout": layout}]}))
                 .await
@@ -661,7 +681,13 @@ mod tests {
         });
     }
 
-    async fn round_trip(control: &Control, endpoint: &Endpoint, session: &str, made: &Value, work: &Path) -> Result<()> {
+    async fn round_trip(
+        control: &Control,
+        endpoint: &Endpoint,
+        session: &str,
+        made: &Value,
+        work: &Path,
+    ) -> Result<()> {
         let block = made["initial_windows"][0]["block_ids"][0].as_str().context("no block")?;
         control.call("session.attach", json!({"session_id": session})).await?;
         // Two files, one over a message long, one with a name to quote.
@@ -677,7 +703,8 @@ mod tests {
         // The prompt shows the working directory too, so pick out the
         // uploaded files' paths by their names.
         let suffixes = ["/big.dat".to_string(), format!("/{name}")];
-        let words = typed_words(control, session, block, |w| suffixes.iter().any(|s| w.ends_with(s.as_str())), 2).await?;
+        let words =
+            typed_words(control, session, block, |w| suffixes.iter().any(|s| w.ends_with(s.as_str())), 2).await?;
         assert!(words[0].ends_with("/big.dat") && words[1].ends_with(&suffixes[1]), "{words:?}");
 
         let down = work.join("down");
@@ -722,7 +749,12 @@ mod tests {
     ) -> Result<Vec<String>> {
         for _ in 0..100 {
             let screen = control
-                .block_call("com.superlogical.terminal.format", session, block, json!({"format": "text", "unwrap": true}))
+                .block_call(
+                    "com.superlogical.terminal.format",
+                    session,
+                    block,
+                    json!({"format": "text", "unwrap": true}),
+                )
                 .await?;
             let content = screen["content"].as_str().unwrap_or("").to_string();
             for line in content.lines().rev() {

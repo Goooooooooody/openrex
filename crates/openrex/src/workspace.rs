@@ -2,9 +2,9 @@
 //! tabs, and the active window's panes.
 
 use gpui::{
-    App, Bounds, ClickEvent, ClipboardItem, Context, CursorStyle, Entity, ExternalPaths, FocusHandle, Hsla, InteractiveElement,
-    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
-    Render, SharedString, StatefulInteractiveElement, Styled, Window, canvas, div, hsla, px,
+    App, Bounds, ClickEvent, ClipboardItem, Context, CursorStyle, Entity, ExternalPaths, FocusHandle, Hsla,
+    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement, Styled, Window, canvas, div, hsla, px,
     relative,
 };
 use openrex_proto::types::{LayoutNode, SessionView, Window as RexWindow};
@@ -155,7 +155,14 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<crate::actions::Outcome> {
-        type Perform = fn(&mut Workspace, &str, &Value, &Target, &mut Window, &mut Context<Workspace>) -> Option<crate::actions::Outcome>;
+        type Perform = fn(
+            &mut Workspace,
+            &str,
+            &Value,
+            &Target,
+            &mut Window,
+            &mut Context<Workspace>,
+        ) -> Option<crate::actions::Outcome>;
         const MODULES: &[Perform] = &[
             crate::find::perform,
             crate::links::perform,
@@ -294,7 +301,9 @@ impl Workspace {
         if window.is_window_active() || !wayland {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
         } else if let Err(text) = wl_copy(text) {
-            self.store.update(cx, |s, _| { s.pending_clipboard.get_or_insert(text); });
+            self.store.update(cx, |s, _| {
+                s.pending_clipboard.get_or_insert(text);
+            });
         }
     }
 
@@ -305,11 +314,11 @@ impl Workspace {
     /// Moves keyboard focus to the pane the server says is focused, and
     /// tells the server which terminal the keyboard is in.
     fn sync_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(block) = self.store.update(cx, |s, _| s.take_focus_request()) {
-            if let Some(pane) = self.store.read(cx).panes.get(&block) {
-                let handle = pane.read(cx).focus.clone();
-                window.focus(&handle);
-            }
+        if let Some(block) = self.store.update(cx, |s, _| s.take_focus_request())
+            && let Some(pane) = self.store.read(cx).panes.get(&block)
+        {
+            let handle = pane.read(cx).focus.clone();
+            window.focus(&handle);
         }
         let focused = self.store.read(cx).focused_pane().filter(|p| p.read(cx).focus.is_focused(window));
         if focused.is_none() && !self.focus.contains_focused(window, cx) {
@@ -559,7 +568,8 @@ impl Workspace {
             for (block_id, r) in leaves {
                 let Some(pane) = store.panes.get(&block_id) else {
                     // A block that isn't a terminal, such as Rex's walkthrough.
-                    if let Some(block) = layer.blocks.iter().find(|b| b.block_id.as_deref() == Some(block_id.as_str())) {
+                    if let Some(block) = layer.blocks.iter().find(|b| b.block_id.as_deref() == Some(block_id.as_str()))
+                    {
                         cards.push((block.clone(), r));
                     }
                     continue;
@@ -663,20 +673,40 @@ impl Workspace {
                         }
                         cx.notify();
                     }))
-                    .child(div().flex_shrink_0().text_color(if chosen { t.text } else { t.soft }).child(SharedString::from(item.label.clone())))
-                    .child(div().flex_1().min_w_0().truncate().text_color(t.dim).text_size(px(11.0)).child(SharedString::from(item.detail.clone())))
-                    .child(div().flex_shrink_0().text_color(t.dim).text_size(px(11.0)).child(SharedString::from(item.hint.clone()))),
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .text_color(if chosen { t.text } else { t.soft })
+                            .child(SharedString::from(item.label.clone())),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_color(t.dim)
+                            .text_size(px(11.0))
+                            .child(SharedString::from(item.detail.clone())),
+                    )
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .text_color(t.dim)
+                            .text_size(px(11.0))
+                            .child(SharedString::from(item.hint.clone())),
+                    ),
             );
         }
         if visible.is_empty() && !p.empty.is_empty() {
             list = list.child(div().px_3().py_1().text_color(t.dim).child(SharedString::from(p.empty.clone())));
         }
-        let (query, color) = if p.query.is_empty() {
-            (p.placeholder.clone(), t.dim)
+        let (query, color) =
+            if p.query.is_empty() { (p.placeholder.clone(), t.dim) } else { (p.query.clone(), t.text) };
+        let count = if p.is_input() || visible.len() <= ROWS {
+            String::new()
         } else {
-            (p.query.clone(), t.text)
+            format!("{} of {}", selected + 1, visible.len())
         };
-        let count = if p.is_input() || visible.len() <= ROWS { String::new() } else { format!("{} of {}", selected + 1, visible.len()) };
         div()
             .id("palette-backdrop")
             .absolute()
@@ -783,7 +813,10 @@ impl Workspace {
                     .text_color(t.dim)
                     .child(div().size(px(7.0)).rounded_full().bg(dot))
                     .child(SharedString::from(label))
-                    .when_some_el((!keys_state.is_empty()).then(|| div().text_color(t.accent).child(SharedString::from(keys_state)))),
+                    .when_some_el(
+                        (!keys_state.is_empty())
+                            .then(|| div().text_color(t.accent).child(SharedString::from(keys_state))),
+                    ),
             )
             .child(right)
     }
@@ -809,14 +842,7 @@ trait WhenActive: Styled + Sized {
 impl<T: Styled> WhenActive for T {}
 
 fn hint(text: &'static str) -> impl IntoElement {
-    div()
-        .absolute()
-        .size_full()
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_color(theme().dim)
-        .child(text)
+    div().absolute().size_full().flex().items_center().justify_center().text_color(theme().dim).child(text)
 }
 
 fn tab_title(win: &RexWindow, store: &Store, cx: &App) -> String {
@@ -932,10 +958,11 @@ impl Render for Workspace {
 fn wl_copy(text: String) -> Result<(), String> {
     use std::io::Write;
     use std::process::{Command, Stdio};
-    let mut child = match Command::new("wl-copy").stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
-        Ok(child) => child,
-        Err(_) => return Err(text),
-    };
+    let mut child =
+        match Command::new("wl-copy").stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+            Ok(child) => child,
+            Err(_) => return Err(text),
+        };
     let mut stdin = child.stdin.take();
     // Write and wait on its own thread, so neither blocks the window and the
     // child doesn't linger as a zombie.

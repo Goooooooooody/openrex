@@ -22,12 +22,12 @@
 use std::process::{Command, Stdio};
 use std::rc::Rc;
 
-use gpui::{
-    Bounds, Context, CursorStyle, DispatchPhase, Hitbox, HitboxBehavior, ModifiersChangedEvent,
-    MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Point, WeakEntity, Window, fill, point, px, size,
-};
 use ghostty_vt::Terminal;
 use ghostty_vt::terminal::{Point as GridPoint, PointCoordinate};
+use gpui::{
+    Bounds, Context, CursorStyle, DispatchPhase, Hitbox, HitboxBehavior, ModifiersChangedEvent, MouseButton,
+    MouseDownEvent, MouseMoveEvent, Pixels, Point, WeakEntity, Window, fill, point, px, size,
+};
 use serde_json::Value;
 
 use crate::actions::{Outcome, Target};
@@ -265,7 +265,8 @@ pub fn open_target(uri: &str, hostname: &str) -> Option<String> {
         "file" => {
             let after = rest.strip_prefix("//")?;
             let host = &after[..after.find('/')?];
-            let local = host.is_empty() || host.eq_ignore_ascii_case("localhost") || host.eq_ignore_ascii_case(hostname);
+            let local =
+                host.is_empty() || host.eq_ignore_ascii_case("localhost") || host.eq_ignore_ascii_case(hostname);
             let path = path_of_pwd(&format!("file://{after}"));
             (local && path.starts_with('/')).then_some(path)
         }
@@ -341,10 +342,7 @@ impl PaneLinks {
         // When the mouse leaves the window, gpui keeps its last position but
         // marks the window unhovered and draws it again.
         let over = window.is_window_hovered() && bounds.contains(&window.mouse_position());
-        let found = (window.modifiers().control && over)
-            .then_some(mouse_cell)
-            .flatten()
-            .and_then(|at| self.find(at));
+        let found = (window.modifiers().control && over).then_some(mouse_cell).flatten().and_then(|at| self.find(at));
         self.shown = found.is_some();
         let found = found?;
         // Whether the mouse is really over this pane, and not over a pane
@@ -474,12 +472,10 @@ mod tests {
     #[test]
     fn finds_urls_in_text() {
         assert_eq!(urls("see https://example.com/a?b=c#d now"), ["https://example.com/a?b=c#d"]);
-        assert_eq!(urls("http://a.b ftp://c.d/e mailto:me@x.org file:///tmp/f"), [
-            "http://a.b",
-            "ftp://c.d/e",
-            "mailto:me@x.org",
-            "file:///tmp/f"
-        ]);
+        assert_eq!(
+            urls("http://a.b ftp://c.d/e mailto:me@x.org file:///tmp/f"),
+            ["http://a.b", "ftp://c.d/e", "mailto:me@x.org", "file:///tmp/f"]
+        );
         assert_eq!(urls("HTTPS://Example.COM"), ["HTTPS://Example.COM"]);
         assert_eq!(urls("no links here, just http:// and mailto:"), Vec::<String>::new());
         // Inside a word, it's not a URL.
@@ -498,9 +494,10 @@ mod tests {
         assert_eq!(urls("'https://a.b/c'"), ["https://a.b/c"]);
         assert_eq!(urls("**https://a.b/c**"), ["https://a.b/c"]);
         assert_eq!(urls("(see https://a.b/c)"), ["https://a.b/c"]);
-        assert_eq!(urls("(https://en.wikipedia.org/wiki/Rust_(language))."), [
-            "https://en.wikipedia.org/wiki/Rust_(language)"
-        ]);
+        assert_eq!(
+            urls("(https://en.wikipedia.org/wiki/Rust_(language))."),
+            ["https://en.wikipedia.org/wiki/Rust_(language)"]
+        );
         assert_eq!(urls("[link](https://a.b/c)"), ["https://a.b/c"]);
         assert_eq!(urls("[https://a.b/c]"), ["https://a.b/c"]);
         assert_eq!(urls("http://[::1]:8080/x"), ["http://[::1]:8080/x"]);
@@ -570,11 +567,14 @@ mod tests {
         for (col, row) in [(4, 0), (2, 1), (1, 2)] {
             let found = link_at(&f.lines, f.cols, col, row).unwrap();
             assert_eq!(found.uri, "https://abc.de/fghij");
-            assert_eq!(found.cells, vec![
-                Segment { row: 0, col: 2, width: 8 },
-                Segment { row: 1, col: 0, width: 10 },
-                Segment { row: 2, col: 0, width: 2 },
-            ]);
+            assert_eq!(
+                found.cells,
+                vec![
+                    Segment { row: 0, col: 2, width: 8 },
+                    Segment { row: 1, col: 0, width: 10 },
+                    Segment { row: 2, col: 0, width: 2 },
+                ]
+            );
         }
         assert_eq!(link_at(&f.lines, f.cols, 3, 2), None);
         assert_eq!(link_at(&f.lines, f.cols, 0, 0), None);

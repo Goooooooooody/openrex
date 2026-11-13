@@ -72,7 +72,8 @@ impl TermTheme {
             "scheme": if self.is_light() { "light" } else { "dark" },
             "palette": self.palette.iter().map(|(i, c)| format!("{i}={}", hex(*c))).collect::<Vec<_>>(),
         });
-        for (key, color) in [("background", self.background), ("foreground", self.foreground), ("cursor", self.cursor)] {
+        for (key, color) in [("background", self.background), ("foreground", self.foreground), ("cursor", self.cursor)]
+        {
             args[key] = json!(color.map(hex).unwrap_or_default());
         }
         args
@@ -151,8 +152,8 @@ const BUILTINS: &[Builtin] = &[
         cursor: 0xc0caf5,
         selection: 0x283457,
         palette: [
-            0x15161e, 0xf7768e, 0x9ece6a, 0xe0af68, 0x7aa2f7, 0xbb9af7, 0x7dcfff, 0xa9b1d6,
-            0x414868, 0xf7768e, 0x9ece6a, 0xe0af68, 0x7aa2f7, 0xbb9af7, 0x7dcfff, 0xc0caf5,
+            0x15161e, 0xf7768e, 0x9ece6a, 0xe0af68, 0x7aa2f7, 0xbb9af7, 0x7dcfff, 0xa9b1d6, 0x414868, 0xf7768e,
+            0x9ece6a, 0xe0af68, 0x7aa2f7, 0xbb9af7, 0x7dcfff, 0xc0caf5,
         ],
     },
     Builtin {
@@ -162,8 +163,8 @@ const BUILTINS: &[Builtin] = &[
         cursor: 0xf5e0dc,
         selection: 0x585b70,
         palette: [
-            0x45475a, 0xf38ba8, 0xa6e3a1, 0xf9e2af, 0x89b4fa, 0xf5c2e7, 0x94e2d5, 0xbac2de,
-            0x585b70, 0xf38ba8, 0xa6e3a1, 0xf9e2af, 0x89b4fa, 0xf5c2e7, 0x94e2d5, 0xa6adc8,
+            0x45475a, 0xf38ba8, 0xa6e3a1, 0xf9e2af, 0x89b4fa, 0xf5c2e7, 0x94e2d5, 0xbac2de, 0x585b70, 0xf38ba8,
+            0xa6e3a1, 0xf9e2af, 0x89b4fa, 0xf5c2e7, 0x94e2d5, 0xa6adc8,
         ],
     },
     Builtin {
@@ -173,8 +174,8 @@ const BUILTINS: &[Builtin] = &[
         cursor: 0xdc8a78,
         selection: 0xacb0be,
         palette: [
-            0x5c5f77, 0xd20f39, 0x40a02b, 0xdf8e1d, 0x1e66f5, 0xea76cb, 0x179299, 0xacb0be,
-            0x6c6f85, 0xd20f39, 0x40a02b, 0xdf8e1d, 0x1e66f5, 0xea76cb, 0x179299, 0xbcc0cc,
+            0x5c5f77, 0xd20f39, 0x40a02b, 0xdf8e1d, 0x1e66f5, 0xea76cb, 0x179299, 0xacb0be, 0x6c6f85, 0xd20f39,
+            0x40a02b, 0xdf8e1d, 0x1e66f5, 0xea76cb, 0x179299, 0xbcc0cc,
         ],
     },
     Builtin {
@@ -184,8 +185,8 @@ const BUILTINS: &[Builtin] = &[
         cursor: 0xf8f8f2,
         selection: 0x44475a,
         palette: [
-            0x21222c, 0xff5555, 0x50fa7b, 0xf1fa8c, 0xbd93f9, 0xff79c6, 0x8be9fd, 0xf8f8f2,
-            0x6272a4, 0xff6e6e, 0x69ff94, 0xffffa5, 0xd6acff, 0xff92df, 0xa4ffff, 0xffffff,
+            0x21222c, 0xff5555, 0x50fa7b, 0xf1fa8c, 0xbd93f9, 0xff79c6, 0x8be9fd, 0xf8f8f2, 0x6272a4, 0xff6e6e,
+            0x69ff94, 0xffffa5, 0xd6acff, 0xff92df, 0xa4ffff, 0xffffff,
         ],
     },
     // morhetz/gruvbox, dark with medium contrast.
@@ -196,8 +197,8 @@ const BUILTINS: &[Builtin] = &[
         cursor: 0xebdbb2,
         selection: 0x504945,
         palette: [
-            0x282828, 0xcc241d, 0x98971a, 0xd79921, 0x458588, 0xb16286, 0x689d6a, 0xa89984,
-            0x928374, 0xfb4934, 0xb8bb26, 0xfabd2f, 0x83a598, 0xd3869b, 0x8ec07c, 0xebdbb2,
+            0x282828, 0xcc241d, 0x98971a, 0xd79921, 0x458588, 0xb16286, 0x689d6a, 0xa89984, 0x928374, 0xfb4934,
+            0xb8bb26, 0xfabd2f, 0x83a598, 0xd3869b, 0x8ec07c, 0xebdbb2,
         ],
     },
     Builtin {
@@ -207,8 +208,8 @@ const BUILTINS: &[Builtin] = &[
         cursor: 0xd8dee9,
         selection: 0x434c5e,
         palette: [
-            0x3b4252, 0xbf616a, 0xa3be8c, 0xebcb8b, 0x81a1c1, 0xb48ead, 0x88c0d0, 0xe5e9f0,
-            0x4c566a, 0xbf616a, 0xa3be8c, 0xebcb8b, 0x81a1c1, 0xb48ead, 0x8fbcbb, 0xeceff4,
+            0x3b4252, 0xbf616a, 0xa3be8c, 0xebcb8b, 0x81a1c1, 0xb48ead, 0x88c0d0, 0xe5e9f0, 0x4c566a, 0xbf616a,
+            0xa3be8c, 0xebcb8b, 0x81a1c1, 0xb48ead, 0x8fbcbb, 0xeceff4,
         ],
     },
     // Atom's One Dark, as ported to terminals.
@@ -219,8 +220,8 @@ const BUILTINS: &[Builtin] = &[
         cursor: 0x528bff,
         selection: 0x3e4451,
         palette: [
-            0x1e2127, 0xe06c75, 0x98c379, 0xd19a66, 0x61afef, 0xc678dd, 0x56b6c2, 0xabb2bf,
-            0x5c6370, 0xe06c75, 0x98c379, 0xd19a66, 0x61afef, 0xc678dd, 0x56b6c2, 0xffffff,
+            0x1e2127, 0xe06c75, 0x98c379, 0xd19a66, 0x61afef, 0xc678dd, 0x56b6c2, 0xabb2bf, 0x5c6370, 0xe06c75,
+            0x98c379, 0xd19a66, 0x61afef, 0xc678dd, 0x56b6c2, 0xffffff,
         ],
     },
     // Ethan Schoonover's terminal mapping of the Solarized palette.
@@ -231,8 +232,8 @@ const BUILTINS: &[Builtin] = &[
         cursor: 0x839496,
         selection: 0x073642,
         palette: [
-            0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5,
-            0x002b36, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3,
+            0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5, 0x002b36, 0xcb4b16,
+            0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3,
         ],
     },
     Builtin {
@@ -242,8 +243,8 @@ const BUILTINS: &[Builtin] = &[
         cursor: 0x657b83,
         selection: 0xeee8d5,
         palette: [
-            0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5,
-            0x002b36, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3,
+            0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5, 0x002b36, 0xcb4b16,
+            0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3,
         ],
     },
     Builtin {
@@ -253,8 +254,8 @@ const BUILTINS: &[Builtin] = &[
         cursor: 0x524f67,
         selection: 0x403d52,
         palette: [
-            0x26233a, 0xeb6f92, 0x31748f, 0xf6c177, 0x9ccfd8, 0xc4a7e7, 0xebbcba, 0xe0def4,
-            0x6e6a86, 0xeb6f92, 0x31748f, 0xf6c177, 0x9ccfd8, 0xc4a7e7, 0xebbcba, 0xe0def4,
+            0x26233a, 0xeb6f92, 0x31748f, 0xf6c177, 0x9ccfd8, 0xc4a7e7, 0xebbcba, 0xe0def4, 0x6e6a86, 0xeb6f92,
+            0x31748f, 0xf6c177, 0x9ccfd8, 0xc4a7e7, 0xebbcba, 0xe0def4,
         ],
     },
 ];
@@ -329,7 +330,7 @@ fn merge(mut themes: Vec<TermTheme>, files: Vec<TermTheme>) -> Vec<TermTheme> {
     let builtin_count = themes.len();
     // Your own files replace a built-in theme of the same name in place.
     for file in files.iter().filter(|t| t.source == Source::User) {
-        if let Some(slot) = themes[..builtin_count].iter_mut().find(|t| key(&**t) == key(file)) {
+        if let Some(slot) = themes[..builtin_count].iter_mut().find(|t| key(t) == key(file)) {
             *slot = file.clone();
         }
     }
@@ -450,14 +451,14 @@ pub fn derive_colors(theme: &TermTheme) -> Colors {
     }
     let light = theme.is_light();
     let panel = theme.background.unwrap_or(TOKYO_NIGHT_CHROME.panel);
-    let text = theme
-        .foreground
-        .filter(|fg| contrast(*fg, panel) >= 3.0)
-        .unwrap_or(if light { Rgb(0x20, 0x20, 0x20) } else { Rgb(0xe8, 0xe8, 0xe8) });
+    let text = theme.foreground.filter(|fg| contrast(*fg, panel) >= 3.0).unwrap_or(if light {
+        Rgb(0x20, 0x20, 0x20)
+    } else {
+        Rgb(0xe8, 0xe8, 0xe8)
+    });
     // The first of the palette colours that reads against the panels.
-    let pick = |indices: &[u8], min: f32| {
-        indices.iter().filter_map(|i| theme.color(*i)).find(|c| contrast(*c, panel) >= min)
-    };
+    let pick =
+        |indices: &[u8], min: f32| indices.iter().filter_map(|i| theme.color(*i)).find(|c| contrast(*c, panel) >= min);
     let accent = pick(&[4, 12, 6, 14, 5], 2.0).unwrap_or(text);
     let mut dim = mix(panel, text, 0.5);
     for step in [0.6, 0.7, 0.8] {
@@ -736,11 +737,16 @@ impl SettingsFile {
     /// JSON object is an error, for the person to fix.
     pub fn load(&self) -> Result<Saved, String> {
         let Some(v) = self.read()? else { return Ok(Saved::default()) };
-        let text = |key: &str| v.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+        let text =
+            |key: &str| v.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
         Ok(Saved {
             theme: text("theme"),
             font_family: text("font_family"),
-            font_size: v.get("font_size").and_then(Value::as_f64).map(|s| s as f32).filter(|s| (6.0..=72.0).contains(s)),
+            font_size: v
+                .get("font_size")
+                .and_then(Value::as_f64)
+                .map(|s| s as f32)
+                .filter(|s| (6.0..=72.0).contains(s)),
         })
     }
 
@@ -854,7 +860,17 @@ font-family = Iosevka
         let themes = builtin_themes();
         let names: Vec<&str> = themes.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names[0], DEFAULT_THEME);
-        for name in ["Catppuccin Mocha", "Catppuccin Latte", "Dracula", "Gruvbox Dark", "Nord", "One Dark", "Solarized Dark", "Solarized Light", "Rosé Pine"] {
+        for name in [
+            "Catppuccin Mocha",
+            "Catppuccin Latte",
+            "Dracula",
+            "Gruvbox Dark",
+            "Nord",
+            "One Dark",
+            "Solarized Dark",
+            "Solarized Light",
+            "Rosé Pine",
+        ] {
             assert!(names.contains(&name), "{name}");
         }
         let light: Vec<&str> = themes.iter().filter(|t| t.is_light()).map(|t| t.name.as_str()).collect();
@@ -937,7 +953,12 @@ font-family = Iosevka
     #[test]
     fn chrome_skips_colours_that_dont_read() {
         // A blue as dark as the background: the accent falls to bright blue.
-        let t = parse_ghostty("x", Source::User, "background = #101010\nforeground = #f0f0f0\npalette = 4=#121212\npalette = 12=#5090ff").unwrap();
+        let t = parse_ghostty(
+            "x",
+            Source::User,
+            "background = #101010\nforeground = #f0f0f0\npalette = 4=#121212\npalette = 12=#5090ff",
+        )
+        .unwrap();
         assert_eq!(derive_colors(&t).accent, Rgb(0x50, 0x90, 0xff));
         // No colours at all still gives readable chrome.
         let none = parse_ghostty("x", Source::User, "palette = 200=#123456").unwrap();
@@ -954,7 +975,11 @@ font-family = Iosevka
     }
 
     fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("openrex-theme-{tag}-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let dir = std::env::temp_dir().join(format!(
+            "openrex-theme-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -970,7 +995,10 @@ font-family = Iosevka
         std::fs::write(&file.path, r#"{"theme":"Nord","font_size":15,"font_family":"Iosevka","future":[1]}"#).unwrap();
         file.set("theme", json!("Dracula")).unwrap();
         let saved = file.load().unwrap();
-        assert_eq!(saved, Saved { theme: Some("Dracula".into()), font_family: Some("Iosevka".into()), font_size: Some(15.0) });
+        assert_eq!(
+            saved,
+            Saved { theme: Some("Dracula".into()), font_family: Some("Iosevka".into()), font_size: Some(15.0) }
+        );
         let raw: Value = serde_json::from_str(&std::fs::read_to_string(&file.path).unwrap()).unwrap();
         assert_eq!(raw["future"], json!([1]));
         // Nothing is left behind beside it.

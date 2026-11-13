@@ -126,7 +126,14 @@ impl Workspace {
     }
 
     /// Performs an action by name.
-    pub fn perform(&mut self, action: &str, args: &Value, target: Target, window: &mut Window, cx: &mut Context<Self>) -> Outcome {
+    pub fn perform(
+        &mut self,
+        action: &str,
+        args: &Value,
+        target: Target,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Outcome {
         let args = if args.is_null() { &json!({}) } else { args };
         let dir_action = |prefix: &str| action.strip_prefix(prefix).filter(|d| split_of(d).is_some() || *d == "auto");
         if let Some(d) = dir_action("pane.split.") {
@@ -249,27 +256,40 @@ impl Workspace {
                 done()
             }
             "session.rename" => {
-                let session = arg_str(args, "session").map(str::to_string).or_else(|| self.store.read(cx).current.clone());
+                let session =
+                    arg_str(args, "session").map(str::to_string).or_else(|| self.store.read(cx).current.clone());
                 let Some(session) = session else { return fail("conflict", "no session is open") };
                 match args.get("label").and_then(Value::as_str) {
                     Some(label) => {
-                        self.store.update(cx, |s, cx| s.request("session.set_label", json!({"session_id": session, "label": label}), cx));
+                        self.store.update(cx, |s, cx| {
+                            s.request("session.set_label", json!({"session_id": session, "label": label}), cx)
+                        });
                     }
                     None => {
                         let current = self.session_label(&session, cx);
                         self.palette = Some(
-                            Palette::input("Rename Session", "session.rename", json!({"session": session}), "label", &current)
-                                .placeholder("A name for the session"),
+                            Palette::input(
+                                "Rename Session",
+                                "session.rename",
+                                json!({"session": session}),
+                                "label",
+                                &current,
+                            )
+                            .placeholder("A name for the session"),
                         );
                     }
                 }
                 done()
             }
             "session.close" => {
-                let session = arg_str(args, "session").map(str::to_string).or_else(|| self.store.read(cx).current.clone());
+                let session =
+                    arg_str(args, "session").map(str::to_string).or_else(|| self.store.read(cx).current.clone());
                 let Some(session) = session else { return fail("conflict", "no session is open") };
                 // Ending a session ends its programs, so a key asks first.
-                if args.get("confirm").and_then(Value::as_bool) == Some(true) || target.origin == "api" || target.origin == "cli" {
+                if args.get("confirm").and_then(Value::as_bool) == Some(true)
+                    || target.origin == "api"
+                    || target.origin == "cli"
+                {
                     self.store.update(cx, |s, cx| s.destroy_session(session, cx));
                 } else {
                     let label = self.session_label(&session, cx);
@@ -297,7 +317,9 @@ impl Workspace {
                     let Some(cur) = store.current.clone() else { return fail("conflict", "no session is open") };
                     let i = store.sessions.iter().position(|s| s.id == cur).unwrap_or(0);
                     let before = if action == "session.move.up" {
-                        if i == 0 { return done() }
+                        if i == 0 {
+                            return done();
+                        }
                         Some(store.sessions[i - 1].id.clone())
                     } else {
                         store.sessions.get(i + 2).map(|s| s.id.clone())
@@ -321,7 +343,8 @@ impl Workspace {
                 done()
             }
             "client.tab.close" => {
-                let Some(win) = arg_str(args, "window").map(str::to_string).or_else(|| self.active_window_id(cx)) else {
+                let Some(win) = arg_str(args, "window").map(str::to_string).or_else(|| self.active_window_id(cx))
+                else {
                     return fail("conflict", "no tab is open");
                 };
                 self.store.update(cx, |s, cx| s.close_window(win, cx));
@@ -331,17 +354,26 @@ impl Workspace {
                 let keep = self.active_window_id(cx);
                 let others: Vec<String> = self
                     .view(cx)
-                    .map(|v| v.windows.iter().filter_map(|w| w.window_id.clone()).filter(|id| Some(id) != keep.as_ref()).collect())
+                    .map(|v| {
+                        v.windows
+                            .iter()
+                            .filter_map(|w| w.window_id.clone())
+                            .filter(|id| Some(id) != keep.as_ref())
+                            .collect()
+                    })
                     .unwrap_or_default();
                 self.store.update(cx, |s, cx| others.into_iter().for_each(|w| s.close_window(w, cx)));
                 done()
             }
             "client.tab.rename" => {
-                let Some(win) = arg_str(args, "window").map(str::to_string).or_else(|| self.active_window_id(cx)) else {
+                let Some(win) = arg_str(args, "window").map(str::to_string).or_else(|| self.active_window_id(cx))
+                else {
                     return fail("conflict", "no tab is open");
                 };
                 match args.get("label").and_then(Value::as_str) {
-                    Some(label) => self.session(cx, "session.set_window_label", json!({"window_id": win, "label": label})),
+                    Some(label) => {
+                        self.session(cx, "session.set_window_label", json!({"window_id": win, "label": label}))
+                    }
                     None => {
                         let current = self
                             .view(cx)
@@ -349,8 +381,14 @@ impl Workspace {
                             .map(|w| w.label)
                             .unwrap_or_default();
                         self.palette = Some(
-                            Palette::input("Rename Tab", "client.tab.rename", json!({"window": win}), "label", &current)
-                                .placeholder("A name for the tab. Empty restores the default."),
+                            Palette::input(
+                                "Rename Tab",
+                                "client.tab.rename",
+                                json!({"window": win}),
+                                "label",
+                                &current,
+                            )
+                            .placeholder("A name for the tab. Empty restores the default."),
                         );
                         done()
                     }
@@ -383,7 +421,9 @@ impl Workspace {
                 let to = match action {
                     "client.tab.move.backward" => from.saturating_sub(1),
                     "client.tab.move.forward" => (from + 1).min(ids.len() - 1),
-                    _ => (args.get("index").and_then(Value::as_u64).unwrap_or(1).max(1) as usize - 1).min(ids.len() - 1),
+                    _ => {
+                        (args.get("index").and_then(Value::as_u64).unwrap_or(1).max(1) as usize - 1).min(ids.len() - 1)
+                    }
                 };
                 if to == from {
                     return done();
@@ -400,7 +440,11 @@ impl Workspace {
 
             // Pane
             "pane.split" => self.split_pane(arg_str(args, "direction").unwrap_or("right"), cx),
-            "pane.focus" => self.session(cx, "session.focus_direction", json!({"direction": arg_str(args, "direction").unwrap_or("right")})),
+            "pane.focus" => self.session(
+                cx,
+                "session.focus_direction",
+                json!({"direction": arg_str(args, "direction").unwrap_or("right")}),
+            ),
             "pane.focus_block" => {
                 let Some(block) = arg_str(args, "block") else { return fail("bad_request", "block is required") };
                 self.session(cx, "session.focus_block", json!({"block_id": block}))
@@ -425,7 +469,14 @@ impl Workspace {
                 let others: Vec<String> = self
                     .view(cx)
                     .and_then(|v| active_window(&v).cloned())
-                    .map(|w| w.layers.iter().flat_map(|l| l.blocks.iter()).filter_map(|b| b.block_id.clone()).filter(|b| Some(b) != keep.as_ref()).collect())
+                    .map(|w| {
+                        w.layers
+                            .iter()
+                            .flat_map(|l| l.blocks.iter())
+                            .filter_map(|b| b.block_id.clone())
+                            .filter(|b| Some(b) != keep.as_ref())
+                            .collect()
+                    })
                     .unwrap_or_default();
                 for b in others {
                     self.session(cx, "block.close", json!({"block_id": b}))?;
@@ -473,7 +524,10 @@ impl Workspace {
                                     .iter()
                                     .enumerate()
                                     .filter(|(_, w)| w.window_id != v.active_window_id)
-                                    .map(|(i, w)| Item::new(self.window_title(w, cx), "pane.move_to_tab", json!({"index": i + 1})).detail(format!("tab {}", i + 1)))
+                                    .map(|(i, w)| {
+                                        Item::new(self.window_title(w, cx), "pane.move_to_tab", json!({"index": i + 1}))
+                                            .detail(format!("tab {}", i + 1))
+                                    })
                                     .collect()
                             })
                             .unwrap_or_default();
@@ -483,11 +537,14 @@ impl Workspace {
                 }
             }
             "pane.rename" => {
-                let Some(block) = arg_str(args, "block").map(str::to_string).or_else(|| self.target_block(&target, cx)) else {
+                let Some(block) = arg_str(args, "block").map(str::to_string).or_else(|| self.target_block(&target, cx))
+                else {
                     return fail("conflict", "no pane is focused");
                 };
                 match args.get("label").and_then(Value::as_str) {
-                    Some(label) => self.session(cx, "session.set_block_label", json!({"block_id": block, "label": label})),
+                    Some(label) => {
+                        self.session(cx, "session.set_block_label", json!({"block_id": block, "label": label}))
+                    }
                     None => {
                         let current = self.block_label(&block, cx);
                         self.palette = Some(
@@ -524,9 +581,15 @@ impl Workspace {
             }
             "pane.send_key" => {
                 let Some(spec) = arg_str(args, "key") else { return fail("bad_request", "key is required") };
-                let Some(key) = keymap::parse_key(spec) else { return fail("bad_request", format!("can't read the key {spec}")) };
+                let Some(key) = keymap::parse_key(spec) else {
+                    return fail("bad_request", format!("can't read the key {spec}"));
+                };
                 let Some(block) = self.target_block(&target, cx) else { return fail("conflict", "no pane is focused") };
-                self.session(cx, "block.event", json!({"block_id": block, "event": {"type": "key", "payload": keymap::key_event_of(&key)}}))
+                self.session(
+                    cx,
+                    "block.event",
+                    json!({"block_id": block, "event": {"type": "key", "payload": keymap::key_event_of(&key)}}),
+                )
             }
             "client.key.forward" => {
                 let (Some(key), Some(session)) = (target.key.clone(), self.store.read(cx).current.clone()) else {
@@ -542,7 +605,11 @@ impl Workspace {
                 done()
             }
             "pane.clear" | "pane.reset" => {
-                let method = if action == "pane.clear" { "com.superlogical.terminal.clear" } else { "com.superlogical.terminal.reset" };
+                let method = if action == "pane.clear" {
+                    "com.superlogical.terminal.clear"
+                } else {
+                    "com.superlogical.terminal.reset"
+                };
                 self.server_action(method, &Value::Null, &target, cx);
                 done()
             }
@@ -617,7 +684,9 @@ impl Workspace {
             }
 
             // Anything else is the configuration file's or a block's.
-            _ if self.store.read(cx).keymap.server_actions.iter().any(|a| a.name == action) || action.contains("com.superlogical.") => {
+            _ if self.store.read(cx).keymap.server_actions.iter().any(|a| a.name == action)
+                || action.contains("com.superlogical.") =>
+            {
                 self.server_action(action, args, &target, cx);
                 done()
             }
@@ -653,7 +722,9 @@ impl Workspace {
                         .as_array()
                         .into_iter()
                         .flatten()
-                        .filter_map(|a| Some((a["action"].as_str()?.to_string(), a.get("args").cloned().unwrap_or(Value::Null))))
+                        .filter_map(|a| {
+                            Some((a["action"].as_str()?.to_string(), a.get("args").cloned().unwrap_or(Value::Null)))
+                        })
                         .collect();
                     this.queued_actions.extend(queued);
                     // The store's observer performs them, even off screen.
@@ -733,7 +804,9 @@ impl Workspace {
         } else {
             direction
         };
-        let Some((split, side)) = split_of(direction) else { return fail("bad_request", format!("unknown direction {direction}")) };
+        let Some((split, side)) = split_of(direction) else {
+            return fail("bad_request", format!("unknown direction {direction}"));
+        };
         let cwd = self.focused_cwd(cx);
         self.store.update(cx, |s, cx| s.split_side(split, side, cwd, cx));
         done()
@@ -767,10 +840,10 @@ impl Workspace {
                 let (mut before, mut after) = (Vec::new(), Vec::new());
                 split.before.leaves(&mut before);
                 split.after.leaves(&mut after);
-                if before.iter().chain(&after).any(|(id, _)| *id == focused) {
-                    if let (Some((b, _)), Some((a, _))) = (before.last(), after.first()) {
-                        found = Some((b.clone(), a.clone(), split.ratio));
-                    }
+                if before.iter().chain(&after).any(|(id, _)| *id == focused)
+                    && let (Some((b, _)), Some((a, _))) = (before.last(), after.first())
+                {
+                    found = Some((b.clone(), a.clone(), split.ratio));
                 }
             }
         }
@@ -786,7 +859,9 @@ impl Workspace {
         let session = view.session_id.clone().unwrap_or_default();
         match block {
             Some(block) => {
-                let anchor = active_window(&view).and_then(|w| w.focused_block_id.clone().or_else(|| tiled_leaves(w).first().map(|(id, _)| id.clone())));
+                let anchor = active_window(&view).and_then(|w| {
+                    w.focused_block_id.clone().or_else(|| tiled_leaves(w).first().map(|(id, _)| id.clone()))
+                });
                 match anchor {
                     Some(anchor) => self.session(cx, "session.move_block", json!({"block_id": block, "anchor_block_id": anchor, "direction": "horizontal", "side": "after"})),
                     None => self.session(cx, "session.focus_block", json!({"block_id": block})),
@@ -807,14 +882,21 @@ impl Workspace {
                             .filter_map(|b| {
                                 let id = b["block_id"].as_str()?.to_string();
                                 let label = b["label"].as_str().unwrap_or("").to_string();
-                                Some(Item::new(if label.is_empty() { id.clone() } else { label }, "pane.attach", json!({"block": id})).detail("detached"))
+                                Some(
+                                    Item::new(
+                                        if label.is_empty() { id.clone() } else { label },
+                                        "pane.attach",
+                                        json!({"block": id}),
+                                    )
+                                    .detail("detached"),
+                                )
                             })
                             .collect();
-                        if let Some(p) = &mut this.palette {
-                            if p.title == "Detached Panes" {
-                                p.items = items;
-                                p.empty = "There are no detached panes".into();
-                            }
+                        if let Some(p) = &mut this.palette
+                            && p.title == "Detached Panes"
+                        {
+                            p.items = items;
+                            p.empty = "There are no detached panes".into();
                         }
                         cx.notify();
                     })
@@ -833,12 +915,20 @@ impl Workspace {
         let Some(session) = self.store.read(cx).current.clone() else { return done() };
         cx.spawn(async move |this, cx| {
             let made = control
-                .call("session.new_window", json!({"session_id": session, "layout": crate::store::shell_layout_in(None)}))
+                .call(
+                    "session.new_window",
+                    json!({"session_id": session, "layout": crate::store::shell_layout_in(None)}),
+                )
                 .await;
-            let placeholder = made.ok().and_then(|v| v["block_ids"].as_array().and_then(|a| a.first()).and_then(Value::as_str).map(str::to_string));
+            let placeholder = made.ok().and_then(|v| {
+                v["block_ids"].as_array().and_then(|a| a.first()).and_then(Value::as_str).map(str::to_string)
+            });
             let Some(placeholder) = placeholder else { return };
             let moved = control
-                .call("session.move_block", json!({"session_id": session, "block_id": block, "anchor_block_id": placeholder}))
+                .call(
+                    "session.move_block",
+                    json!({"session_id": session, "block_id": block, "anchor_block_id": placeholder}),
+                )
                 .await;
             if moved.is_ok() {
                 control.call("block.close", json!({"session_id": session, "block_id": placeholder})).await.ok();
@@ -852,7 +942,9 @@ impl Workspace {
 
     fn move_to_tab(&mut self, block: String, index: usize, cx: &mut Context<Self>) -> Outcome {
         let Some(view) = self.view(cx) else { return done() };
-        let Some(win) = view.windows.get(index.max(1) - 1) else { return fail("not_found", format!("there is no tab {index}")) };
+        let Some(win) = view.windows.get(index.max(1) - 1) else {
+            return fail("not_found", format!("there is no tab {index}"));
+        };
         let anchor = win.focused_block_id.clone().or_else(|| tiled_leaves(win).first().map(|(id, _)| id.clone()));
         match anchor {
             Some(anchor) if anchor != block => {
@@ -877,12 +969,23 @@ impl Workspace {
         crate::theme::remember("font_size", json!(size));
     }
 
-    pub(crate) fn open_path_input(&mut self, title: &str, action: &str, files: bool, cx: &mut Context<Self>) -> Outcome {
+    pub(crate) fn open_path_input(
+        &mut self,
+        title: &str,
+        action: &str,
+        files: bool,
+        cx: &mut Context<Self>,
+    ) -> Outcome {
         let Some(view) = self.view(cx) else { return fail("conflict", "no session is open") };
-        let Some(block) = focused_block(&view).map(str::to_string) else { return fail("conflict", "no pane is focused") };
-        let start = self.focused_cwd(cx).map(|c| if c.ends_with('/') { c } else { c + "/" }).unwrap_or_else(|| "~/".into());
-        let mut palette = Palette::input(title, action, json!({}), "path", &start).placeholder("A path. Tab completes.");
-        palette.suggest = Suggest::Paths { session_id: view.session_id.clone().unwrap_or_default(), block_id: block, files };
+        let Some(block) = focused_block(&view).map(str::to_string) else {
+            return fail("conflict", "no pane is focused");
+        };
+        let start =
+            self.focused_cwd(cx).map(|c| if c.ends_with('/') { c } else { c + "/" }).unwrap_or_else(|| "~/".into());
+        let mut palette =
+            Palette::input(title, action, json!({}), "path", &start).placeholder("A path. Tab completes.");
+        palette.suggest =
+            Suggest::Paths { session_id: view.session_id.clone().unwrap_or_default(), block_id: block, files };
         self.palette = Some(palette);
         self.refresh_suggestions(cx);
         done()
@@ -917,7 +1020,11 @@ impl Workspace {
                             crate::palette::Kind::Input { action, .. } => (action.clone(), full.clone()),
                             _ => return None,
                         };
-                        Some(Item::new(full, action, json!({"path": arg})).detail(if is_dir { "directory" } else { "" }))
+                        Some(Item::new(full, action, json!({"path": arg})).detail(if is_dir {
+                            "directory"
+                        } else {
+                            ""
+                        }))
                     })
                     .collect();
                 p.selected = 0;
@@ -940,7 +1047,12 @@ impl Workspace {
             }
             let hint = km.keys_for(&a.name, &Value::Null).unwrap_or_default();
             let detail = if a.category.is_empty() { String::new() } else { a.category.clone() };
-            items.push(Item::new(a.title.clone(), a.name.clone(), Value::Null).detail(detail).hint(hint).keywords(format!("{} {} {}", a.keywords, a.name, a.description)));
+            items.push(
+                Item::new(a.title.clone(), a.name.clone(), Value::Null)
+                    .detail(detail)
+                    .hint(hint)
+                    .keywords(format!("{} {} {}", a.keywords, a.name, a.description)),
+            );
         };
         self.client_actions.iter().for_each(&mut add);
         km.server_actions.iter().for_each(&mut add);
@@ -970,13 +1082,20 @@ impl Workspace {
         }
         if let Some(view) = store.current_view() {
             for (i, w) in view.windows.iter().enumerate() {
-                items.push(Item::new(self.window_title(w, cx), "client.tab.goto", json!({"index": i + 1})).detail(format!("tab {}", i + 1)));
+                items.push(
+                    Item::new(self.window_title(w, cx), "client.tab.goto", json!({"index": i + 1}))
+                        .detail(format!("tab {}", i + 1)),
+                );
                 for layer in &w.layers {
                     for b in &layer.blocks {
                         let Some(id) = &b.block_id else { continue };
                         let title = store.panes.get(id).map(|p| p.read(cx).title.clone()).filter(|t| !t.is_empty());
                         let label = title.unwrap_or_else(|| b.label.clone());
-                        items.push(Item::new(label, "pane.focus_block", json!({"block": id})).detail(format!("pane in tab {}", i + 1)).keywords(b.label.clone()));
+                        items.push(
+                            Item::new(label, "pane.focus_block", json!({"block": id}))
+                                .detail(format!("pane in tab {}", i + 1))
+                                .keywords(b.label.clone()),
+                        );
                     }
                 }
             }

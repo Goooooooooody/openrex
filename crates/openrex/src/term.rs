@@ -8,15 +8,15 @@
 use std::rc::Rc;
 
 use anyhow::{Result, anyhow};
+use ghostty_vt::Terminal;
 use ghostty_vt::fmt::Format;
 use ghostty_vt::render::{CellIterator, CursorVisualStyle, Dirty, RenderState, RowIterator};
 use ghostty_vt::screen::{CellWide, Screen, TrackedGridRef};
 use ghostty_vt::selection::{FormatOptions, SelectLineOptions, SelectWordOptions, Selection};
 use ghostty_vt::snapshot::Decoder;
-use ghostty_vt::style::{Palette, PaletteIndex, RgbColor, StyleColor};
 pub use ghostty_vt::style::Underline;
+use ghostty_vt::style::{Palette, PaletteIndex, RgbColor, StyleColor};
 use ghostty_vt::terminal::{Options, Point, PointCoordinate, ScrollViewport};
-use ghostty_vt::Terminal;
 use openrex_proto::{Framed, RexMessage, SnapshotFramer, StreamItem, StreamSplitter};
 use serde_json::Value;
 
@@ -104,8 +104,13 @@ pub struct Frame {
 #[derive(Clone, Debug, PartialEq)]
 pub enum MirrorEvent {
     /// The server's terminal changed size.
-    Resized { cols: u16, rows: u16 },
-    Exited { exit_code: i64 },
+    Resized {
+        cols: u16,
+        rows: u16,
+    },
+    Exited {
+        exit_code: i64,
+    },
 }
 
 enum Stage {
@@ -199,9 +204,7 @@ impl Mirror {
                 StreamItem::Vt(data) => self.term.vt_write(&data),
                 StreamItem::Rex(RexMessage::Resize { cols, rows, cell_width_px, cell_height_px, .. }) => {
                     if cols > 0 && rows > 0 {
-                        if let Err(e) =
-                            self.term.resize(cols, rows, cell_width_px.max(1), cell_height_px.max(1))
-                        {
+                        if let Err(e) = self.term.resize(cols, rows, cell_width_px.max(1), cell_height_px.max(1)) {
                             log::error!("resizing the terminal copy: {e:?}");
                         }
                         self.stale = true;
@@ -232,7 +235,7 @@ impl Mirror {
                 continue;
             };
             if let (Ok(index), Some(rgb)) = (index.trim().parse::<u8>(), parse_hex(hex)) {
-                palette.set(PaletteIndex(index.into()), rgb.into());
+                palette.set(PaletteIndex(index), rgb.into());
                 changed = true;
             }
         }
@@ -324,7 +327,9 @@ impl Mirror {
             return;
         }
         let at = |x: u16, y: u32| Point::Screen(PointCoordinate { x, y });
-        let (Ok(start), Ok(end)) = (self.term.grid_ref(at(0, 0)), self.term.grid_ref(at(cols.saturating_sub(1), total as u32 - 1))) else {
+        let (Ok(start), Ok(end)) =
+            (self.term.grid_ref(at(0, 0)), self.term.grid_ref(at(cols.saturating_sub(1), total as u32 - 1)))
+        else {
             return;
         };
         let selection = Selection::new(start, end, false);
@@ -359,10 +364,7 @@ impl Mirror {
         if !self.has_selection {
             return None;
         }
-        let options = FormatOptions::new()
-            .with_emit_format(Format::Plain)
-            .with_unwrap(true)
-            .with_trim(true);
+        let options = FormatOptions::new().with_emit_format(Format::Plain).with_unwrap(true).with_trim(true);
         let bytes = self.term.format_selection_alloc(options).ok()??;
         let text = String::from_utf8_lossy(&bytes).into_owned();
         (!text.is_empty()).then_some(text)
@@ -417,8 +419,7 @@ impl Mirror {
                         } else {
                             Default::default()
                         };
-                        let mut fg: Rgb =
-                            cell.fg_color().ok().flatten().map(Into::into).unwrap_or(default_fg);
+                        let mut fg: Rgb = cell.fg_color().ok().flatten().map(Into::into).unwrap_or(default_fg);
                         let mut bg: Option<Rgb> = cell.bg_color().ok().flatten().map(Into::into);
                         if style.inverse {
                             let old_fg = fg;
@@ -442,8 +443,7 @@ impl Mirror {
                         if !style.invisible {
                             cell.graphemes_utf8(&mut self.scratch).ok();
                         }
-                        let decorated =
-                            style.underline != Underline::None || style.strikethrough || style.overline;
+                        let decorated = style.underline != Underline::None || style.strikethrough || style.overline;
                         if self.scratch.is_empty() {
                             if !decorated {
                                 continue;
@@ -454,11 +454,13 @@ impl Mirror {
                         if self.scratch == " " && !decorated {
                             // A plain space only matters inside a run of text,
                             // and must not extend a run's underline or strike.
-                            if let Some(last) = line.spans.last_mut() {
-                                if last.col + last.width == col && last.text.is_ascii() && !last.decorated() {
-                                    last.text.push(' ');
-                                    last.width += 1;
-                                }
+                            if let Some(last) = line.spans.last_mut()
+                                && last.col + last.width == col
+                                && last.text.is_ascii()
+                                && !last.decorated()
+                            {
+                                last.text.push(' ');
+                                last.width += 1;
                             }
                             continue;
                         }

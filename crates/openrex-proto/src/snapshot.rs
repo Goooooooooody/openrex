@@ -96,7 +96,9 @@ mod tests {
         for cut in 0..=stream.len() {
             let mut f = SnapshotFramer::new();
             let first = f.push(&stream[..cut]);
-            let done = if cut >= snap.len() { first } else {
+            let done = if cut >= snap.len() {
+                first
+            } else {
                 assert_eq!(first, Framed::Pending, "cut at {cut}");
                 f.push(&stream[cut..])
             };

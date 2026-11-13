@@ -16,13 +16,13 @@
 
 use std::ops::Range;
 
+use ghostty_vt::screen::RowSemanticPrompt;
+use ghostty_vt::terminal::{Point as GridPoint, PointCoordinate};
 use gpui::{
     App, Bounds, ContentMask, Context, ElementInputHandler, Entity, EntityInputHandler, FocusHandle, Font, Hsla,
     IntoElement, Keystroke, Pixels, Point, SharedString, Styled, TextRun, UTF16Selection, UnderlineStyle, Window,
     canvas, fill, point, px, size,
 };
-use ghostty_vt::screen::RowSemanticPrompt;
-use ghostty_vt::terminal::{Point as GridPoint, PointCoordinate};
 use serde_json::{Value, json};
 
 use crate::actions::{Outcome, Target};
@@ -225,7 +225,10 @@ impl Preedit {
         // after the composition.
         window.paint_quad(fill(Bounds::new(self.at, size(shaped.width + px(2.0), self.line_h)), self.bg));
         shaped.paint(self.at, self.line_h, window, cx).ok();
-        window.paint_quad(fill(Bounds::new(point(self.at.x + shaped.width, self.at.y), size(px(2.0), self.line_h)), self.fg));
+        window.paint_quad(fill(
+            Bounds::new(point(self.at.x + shaped.width, self.at.y), size(px(2.0), self.line_h)),
+            self.fg,
+        ));
     }
 }
 
@@ -475,7 +478,13 @@ enum Jump {
 /// `len` is the view's height, and `is_prompt` tells whether a row starts a
 /// prompt. A prompt too near the end to reach the top of the view scrolls to
 /// the bottom instead, and `None` means the view wouldn't move.
-fn prompt_jump(top: usize, len: usize, total: usize, forward: bool, mut is_prompt: impl FnMut(usize) -> bool) -> Option<Jump> {
+fn prompt_jump(
+    top: usize,
+    len: usize,
+    total: usize,
+    forward: bool,
+    mut is_prompt: impl FnMut(usize) -> bool,
+) -> Option<Jump> {
     let lowest = total.saturating_sub(len);
     let found = if forward {
         (top + 1..total).find(|&y| is_prompt(y))?
@@ -605,7 +614,8 @@ mod tests {
     #[test]
     fn the_composition_is_drawn_at_the_cursor() {
         use crate::term::{CursorDraw, CursorShape, Rgb};
-        let metrics = Metrics { cell_w: px(10.0), line_h: px(20.0), font_size: px(14.0), ascent: px(11.0), descent: px(3.0) };
+        let metrics =
+            Metrics { cell_w: px(10.0), line_h: px(20.0), font_size: px(14.0), ascent: px(11.0), descent: px(3.0) };
         let frame = |cursor: Option<(u16, u16)>| Frame {
             cols: 80,
             rows: 24,

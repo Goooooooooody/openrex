@@ -8,8 +8,8 @@
 use std::time::{Duration, Instant};
 
 use openrex::input::text_key;
-use openrex_proto::control::{self, Hello};
 use openrex_proto::Endpoint;
+use openrex_proto::control::{self, Hello};
 use serde_json::json;
 
 #[test]

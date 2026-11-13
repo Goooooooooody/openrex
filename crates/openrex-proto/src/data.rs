@@ -63,9 +63,7 @@ pub struct DataConn {
 impl DataConn {
     /// Opens a stream with a ticket from `data.connect` or `session.bootstrap`.
     pub async fn open(endpoint: &Endpoint, subprotocol: &str, ticket: &str) -> Result<DataConn> {
-        let ticket = URL_SAFE_NO_PAD
-            .decode(ticket.trim_end_matches('='))
-            .context("data ticket is not base64url")?;
+        let ticket = URL_SAFE_NO_PAD.decode(ticket.trim_end_matches('=')).context("data ticket is not base64url")?;
         anyhow::ensure!(ticket.len() == 16, "data ticket is {} bytes, not 16", ticket.len());
         let mut hello = Vec::with_capacity(17);
         hello.push(HELLO);
@@ -108,9 +106,8 @@ impl DataConn {
                     return Ok(Some(b.to_vec()));
                 }
                 Message::Close(frame) => {
-                    let (code, reason) = frame
-                        .map(|f| (u16::from(f.code), f.reason.to_string()))
-                        .unwrap_or((1005, String::new()));
+                    let (code, reason) =
+                        frame.map(|f| (u16::from(f.code), f.reason.to_string())).unwrap_or((1005, String::new()));
                     return match code {
                         1000 => Ok(None),
                         4000 => Err(DataError::BlockClosed.into()),
@@ -237,9 +234,8 @@ impl ByteStream {
                 None => anyhow::bail!("data connection dropped"),
                 Some(Err(e)) => return Err(e.into()),
                 Some(Ok(Message::Close(frame))) => {
-                    let (code, reason) = frame
-                        .map(|f| (u16::from(f.code), f.reason.to_string()))
-                        .unwrap_or((1005, String::new()));
+                    let (code, reason) =
+                        frame.map(|f| (u16::from(f.code), f.reason.to_string())).unwrap_or((1005, String::new()));
                     return Err(DataError::Ended(format!("{code} {reason}")).into());
                 }
                 Some(Ok(_)) => {}
@@ -286,10 +282,7 @@ async fn handshake(endpoint: &Endpoint, subprotocol: &str, first: Vec<u8>) -> Re
     let mut ws = endpoint.websocket("/api/data", subprotocol).await?;
     ws.send(Message::binary(first)).await?;
     loop {
-        let msg = ws
-            .next()
-            .await
-            .context("server closed the data connection during the handshake")??;
+        let msg = ws.next().await.context("server closed the data connection during the handshake")??;
         let Message::Binary(b) = msg else {
             if let Message::Close(frame) = msg {
                 anyhow::bail!("data connection closed during the handshake: {frame:?}");
@@ -346,11 +339,12 @@ mod tests {
     }
 
     /// Accepts one data connection and checks its first message.
+    // The handshake callback's error type is tungstenite's, not ours.
+    #[allow(clippy::result_large_err)]
     async fn accept(listener: &UnixListener, first: &[u8]) -> WebSocketStream<UnixStream> {
         let (io, _) = listener.accept().await.unwrap();
         let mut ws = async_tungstenite::accept_hdr_async(io, |_: &Request, mut resp: Response| {
-            resp.headers_mut()
-                .insert("Sec-WebSocket-Protocol", HeaderValue::from_static(BYTES_SUBPROTOCOL));
+            resp.headers_mut().insert("Sec-WebSocket-Protocol", HeaderValue::from_static(BYTES_SUBPROTOCOL));
             Ok(resp)
         })
         .await

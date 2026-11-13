@@ -171,7 +171,13 @@ pub fn parse_hosts(v: &Value) -> Vec<Host> {
             Some(Host {
                 id: h["id"].as_str().filter(|s| !s.is_empty())?.to_string(),
                 label: h["label"].as_str().filter(|s| !s.is_empty())?.to_string(),
-                endpoints: h["endpoints"].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect(),
+                endpoints: h["endpoints"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect(),
             })
         })
         .collect()
@@ -218,7 +224,10 @@ fn fail(code: &str, message: impl Into<String>) -> Outcome {
 }
 
 fn control_of(ws: &Workspace, cx: &App) -> Result<Control, (String, String)> {
-    ws.store.read(cx).control().ok_or_else(|| ("conflict".to_string(), "OpenRex isn't connected to a server".to_string()))
+    ws.store
+        .read(cx)
+        .control()
+        .ok_or_else(|| ("conflict".to_string(), "OpenRex isn't connected to a server".to_string()))
 }
 
 fn show_error(ws: &mut Workspace, message: String, cx: &mut Context<Workspace>) {
@@ -352,7 +361,10 @@ fn open_report(ws: &mut Workspace, report: Report, cx: &mut Context<Workspace>) 
                 .map(|row| {
                     let hint = if row.mark.is_empty() { row.section.to_string() } else { row.mark.clone() };
                     let text = row.text();
-                    Item::new(row.label, COPY_ROW, json!({"text": text})).detail(row.detail).hint(hint).keywords(row.section)
+                    Item::new(row.label, COPY_ROW, json!({"text": text}))
+                        .detail(row.detail)
+                        .hint(hint)
+                        .keywords(row.section)
                 })
                 .collect();
             p.empty = "Nothing to show".into();
@@ -420,7 +432,11 @@ fn tailscale_row(t: Option<&Value>) -> Row {
         if s(&t["https"], "url").is_empty() { s(t, "dns_name").to_string() } else { String::new() },
         s(&t["account"], "login_name").to_string(),
         if s(t, "tailnet_name").is_empty() { String::new() } else { format!("tailnet {}", s(t, "tailnet_name")) },
-        if t["allow_tailnet_members"].as_bool() == Some(true) { "tailnet members allowed".into() } else { String::new() },
+        if t["allow_tailnet_members"].as_bool() == Some(true) {
+            "tailnet members allowed".into()
+        } else {
+            String::new()
+        },
         s(t, "control_url").to_string(),
         if s(t, "error").is_empty() { String::new() } else { format!("error: {}", s(t, "error")) },
     ]);
@@ -446,7 +462,11 @@ pub fn report_rows(info: &ServerInfo, local: &LocalInfo, report: Report) -> Vec<
             Some(Err(e)) => rows.push(failed("server", "Rex server version", e)),
             None => {}
         }
-        rows.push(Row::new("app", format!("OpenRex {VERSION}"), format!("this app, on {}/{}", std::env::consts::OS, std::env::consts::ARCH)));
+        rows.push(Row::new(
+            "app",
+            format!("OpenRex {VERSION}"),
+            format!("this app, on {}/{}", std::env::consts::OS, std::env::consts::ARCH),
+        ));
         let place = match &local.host {
             Some(h) => format!("Connected to host {h}"),
             None => "Connected to this machine's server".to_string(),
@@ -476,12 +496,25 @@ pub fn report_rows(info: &ServerInfo, local: &LocalInfo, report: Report) -> Vec<
                 let hash = s(config, "hash");
                 rows.push(Row::new(
                     "config",
-                    format!("Config loaded {} time{}", config["generation"].as_u64().unwrap_or(0), if config["generation"].as_u64() == Some(1) { "" } else { "s" }),
-                    if hash.is_empty() { "no file, or it couldn't be read".to_string() } else { format!("hash {}", hash.get(..12).unwrap_or(hash)) },
+                    format!(
+                        "Config loaded {} time{}",
+                        config["generation"].as_u64().unwrap_or(0),
+                        if config["generation"].as_u64() == Some(1) { "" } else { "s" }
+                    ),
+                    if hash.is_empty() {
+                        "no file, or it couldn't be read".to_string()
+                    } else {
+                        format!("hash {}", hash.get(..12).unwrap_or(hash))
+                    },
                 ));
                 for l in st["listeners"].as_array().into_iter().flatten() {
-                    let primary = if l["primary"].as_bool() == Some(true) { "primary".to_string() } else { String::new() };
-                    rows.push(Row::new("listener", format!("Listening on {}", s(l, "endpoint")), join(&[s(l, "transport").into(), s(l, "admission").into(), primary])));
+                    let primary =
+                        if l["primary"].as_bool() == Some(true) { "primary".to_string() } else { String::new() };
+                    rows.push(Row::new(
+                        "listener",
+                        format!("Listening on {}", s(l, "endpoint")),
+                        join(&[s(l, "transport").into(), s(l, "admission").into(), primary]),
+                    ));
                 }
                 rows.push(tailscale_row(st.get("tailscale").filter(|t| t.is_object())));
             }
@@ -508,7 +541,14 @@ pub fn report_rows(info: &ServerInfo, local: &LocalInfo, report: Report) -> Vec<
         let (label, detail) = if local.keymap_path.is_empty() {
             ("Config file unknown".to_string(), "the server hasn't sent a keymap yet".to_string())
         } else {
-            (local.keymap_path.clone(), if local.keymap_exists { "the keymap's config file".into() } else { "the keymap's config file, which doesn't exist yet".into() })
+            (
+                local.keymap_path.clone(),
+                if local.keymap_exists {
+                    "the keymap's config file".into()
+                } else {
+                    "the keymap's config file, which doesn't exist yet".into()
+                },
+            )
         };
         rows.push(Row::new("keymap", label, detail));
         if local.keymap_diagnostics.is_empty() {
@@ -551,7 +591,11 @@ fn client_row(c: &Value, me: Option<&str>) -> Row {
             (k, p) => format!("{k} on {p}"),
         },
         format!("{} over {}", s(principal, "display"), s(principal, "transport")),
-        if sessions > 0 { format!("{sessions} session{}", if sessions == 1 { "" } else { "s" }) } else { String::new() },
+        if sessions > 0 {
+            format!("{sessions} session{}", if sessions == 1 { "" } else { "s" })
+        } else {
+            String::new()
+        },
         if lost { "connection lost".into() } else { format!("connected {}", short_time(s(c, "connected_at"))) },
         s(c, "client_id").to_string(),
     ]);
@@ -571,7 +615,11 @@ fn copy_version(ws: &mut Workspace, cx: &mut Context<Workspace>) -> Outcome {
     cx.spawn(async move |this, cx| {
         let result = control.call("server.version", json!({})).await;
         this.update(cx, |ws, cx| match result {
-            Ok(v) => ws.copy_text(format!("OpenRex {VERSION} / Rex server {}", version_line(&v)), "Copied the version info", cx),
+            Ok(v) => ws.copy_text(
+                format!("OpenRex {VERSION} / Rex server {}", version_line(&v)),
+                "Copied the version info",
+                cx,
+            ),
             Err(e) => show_error(ws, format!("server.version: {}", e.message), cx),
         })
         .ok();
@@ -614,13 +662,18 @@ pub fn debug_report(d: &DebugState, version: Option<&Value>, status: Option<&Val
     out.push(format!("Host: {}", d.host.as_deref().unwrap_or("this machine's server")));
     out.push(format!("Connection: {}", d.status));
     if !d.client_id.is_empty() {
-        out.push(format!("Client: {}{}", d.client_id, d.label.as_ref().map(|l| format!(" (label {l})")).unwrap_or_default()));
+        out.push(format!(
+            "Client: {}{}",
+            d.client_id,
+            d.label.as_ref().map(|l| format!(" (label {l})")).unwrap_or_default()
+        ));
     }
     out.push(format!("OS: {}", d.os));
     if !d.display.is_empty() {
         out.push(format!("Display: {}", d.display));
     }
-    let server_sessions = status.and_then(|s| s["session_count"].as_u64()).map(|n| format!(" ({n} on the server)")).unwrap_or_default();
+    let server_sessions =
+        status.and_then(|s| s["session_count"].as_u64()).map(|n| format!(" ({n} on the server)")).unwrap_or_default();
     out.push(format!("Sessions: {}{server_sessions}", d.sessions));
     out.push(format!("Current session: {} tabs, {} panes", d.tabs, d.panes));
     out.push(format!("Terminals open: {}", d.open_panes));
@@ -645,15 +698,24 @@ pub fn os_pretty_name(os_release: &str) -> Option<String> {
 }
 
 fn os_description() -> String {
-    let name = std::fs::read_to_string("/etc/os-release").ok().and_then(|t| os_pretty_name(&t)).unwrap_or_else(|| std::env::consts::OS.to_string());
-    let kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease").map(|k| format!(", kernel {}", k.trim())).unwrap_or_default();
+    let name = std::fs::read_to_string("/etc/os-release")
+        .ok()
+        .and_then(|t| os_pretty_name(&t))
+        .unwrap_or_else(|| std::env::consts::OS.to_string());
+    let kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease")
+        .map(|k| format!(", kernel {}", k.trim()))
+        .unwrap_or_default();
     format!("{name} ({}{kernel})", std::env::consts::ARCH)
 }
 
 fn display_description() -> String {
     let session = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
     let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-    let session = if session.is_empty() && std::env::var_os("WAYLAND_DISPLAY").is_some() { "wayland".to_string() } else { session };
+    let session = if session.is_empty() && std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        "wayland".to_string()
+    } else {
+        session
+    };
     join(&[session, desktop])
 }
 
@@ -691,7 +753,8 @@ fn copy_debug(ws: &mut Workspace, cx: &mut Context<Workspace>) -> Outcome {
         return Ok(Value::Null);
     };
     cx.spawn(async move |this, cx| {
-        let (version, status) = futures::join!(control.call("server.version", json!({})), control.call("server.status", json!({})));
+        let (version, status) =
+            futures::join!(control.call("server.version", json!({})), control.call("server.status", json!({})));
         this.update(cx, |ws, cx| {
             let report = debug_report(&state, version.as_ref().ok(), status.as_ref().ok());
             ws.copy_text(report, "Copied the debug info", cx);
@@ -713,14 +776,20 @@ fn tailscale_enable(ws: &mut Workspace, args: &Value, cx: &mut Context<Workspace
         // already, so keep the server's setting unless asked to change it.
         let allow = match allow {
             Some(a) => a,
-            None => control.call("server.status", json!({})).await.ok().and_then(|v| v["tailscale"]["allow_tailnet_members"].as_bool()).unwrap_or(false),
+            None => control
+                .call("server.status", json!({}))
+                .await
+                .ok()
+                .and_then(|v| v["tailscale"]["allow_tailnet_members"].as_bool())
+                .unwrap_or(false),
         };
         let mut payload = json!({"allow_tailnet_members": allow});
         if let Some(h) = hostname {
             payload["hostname"] = json!(h);
         }
         let result = control.call("server.tailscale.enable", payload).await;
-        this.update(cx, |ws, cx| ws.store.update(cx, |s, cx| tailscale_done(s, "server.tailscale.enable", result, cx))).ok();
+        this.update(cx, |ws, cx| ws.store.update(cx, |s, cx| tailscale_done(s, "server.tailscale.enable", result, cx)))
+            .ok();
     })
     .detach();
     Ok(Value::Null)
@@ -768,7 +837,14 @@ fn tailscale_done(store: &mut Store, method: &str, result: Result<Value, control
             } else {
                 let name = s(&t["https"], "url");
                 let name = if name.is_empty() { s(&t, "dns_name") } else { name };
-                show_notice(store, format!("Tailscale is {}{}", tailscale_state(&t), if name.is_empty() { String::new() } else { format!(": {name}") }));
+                show_notice(
+                    store,
+                    format!(
+                        "Tailscale is {}{}",
+                        tailscale_state(&t),
+                        if name.is_empty() { String::new() } else { format!(": {name}") }
+                    ),
+                );
             }
         }
         Err(e) => {
@@ -812,7 +888,9 @@ fn home_call(ws: &Workspace, method: &'static str, payload: Value, cx: &mut App)
         }
         // No label: this short connection isn't one people should address.
         let hello = Hello { name: "OpenRex".into(), version: VERSION.into(), ..Default::default() };
-        let conn = control::connect(&home, hello).await.map_err(|e| format!("reaching this machine's server at {home}: {e:#}"))?;
+        let conn = control::connect(&home, hello)
+            .await
+            .map_err(|e| format!("reaching this machine's server at {home}: {e:#}"))?;
         let driver = cx.background_executor().spawn(conn.driver);
         let result = conn.control.call(method, payload).await.map_err(|e| format!("{method}: {}", e.message));
         conn.control.close();
@@ -982,13 +1060,19 @@ fn host_switch(ws: &mut Workspace, host: Option<&str>, cx: &mut Context<Workspac
     const TITLE: &str = "Switch Host";
     let items = move |store: &Store| {
         let current = store.server.host.clone();
-        let mut items = vec![Item::new("This server", "client.host.switch", json!({"host": home.to_string()}))
-            .detail(home.to_string())
-            .hint(if current.is_none() { "current" } else { "" })
-            .keywords("local home this machine")];
+        let mut items = vec![
+            Item::new("This server", "client.host.switch", json!({"host": home.to_string()}))
+                .detail(home.to_string())
+                .hint(if current.is_none() { "current" } else { "" })
+                .keywords("local home this machine"),
+        ];
         for h in &store.server.hosts {
             let here = current.as_deref().is_some_and(|c| c.eq_ignore_ascii_case(&h.label));
-            items.push(Item::new(h.label.clone(), "client.host.switch", json!({"host": h.id})).detail(h.endpoints.join(", ")).hint(if here { "current" } else { "" }));
+            items.push(
+                Item::new(h.label.clone(), "client.host.switch", json!({"host": h.id}))
+                    .detail(h.endpoints.join(", "))
+                    .hint(if here { "current" } else { "" }),
+            );
         }
         items
     };
@@ -999,7 +1083,12 @@ fn host_switch(ws: &mut Workspace, host: Option<&str>, cx: &mut Context<Workspac
 
 /// Reads the host list again and, if the palette still shows `title`,
 /// rebuilds its rows from the new list.
-fn refresh_hosts_palette(ws: &mut Workspace, title: &'static str, items: impl Fn(&Store) -> Vec<Item> + 'static, cx: &mut Context<Workspace>) {
+fn refresh_hosts_palette(
+    ws: &mut Workspace,
+    title: &'static str,
+    items: impl Fn(&Store) -> Vec<Item> + 'static,
+    cx: &mut Context<Workspace>,
+) {
     let list = home_call(ws, "hosts.list", json!({}), cx);
     cx.spawn(async move |this, cx| {
         let list = list.await;
@@ -1012,11 +1101,11 @@ fn refresh_hosts_palette(ws: &mut Workspace, title: &'static str, items: impl Fn
                 Err(e) => show_error(ws, e, cx),
             }
             let fresh = items(ws.store.read(cx));
-            if let Some(p) = &mut ws.palette {
-                if p.title == title {
-                    p.items = fresh;
-                    p.selected = p.selected.min(p.items.len().saturating_sub(1));
-                }
+            if let Some(p) = &mut ws.palette
+                && p.title == title
+            {
+                p.items = fresh;
+                p.selected = p.selected.min(p.items.len().saturating_sub(1));
             }
             cx.notify();
         })
@@ -1028,7 +1117,9 @@ fn refresh_hosts_palette(ws: &mut Workspace, title: &'static str, items: impl Fn
 /// A label for a host at `address`: the first part of its name, as
 /// `studio` for `studio.tail1234.ts.net`.
 pub fn suggested_label(address: &str) -> String {
-    let Some(first) = Endpoint::candidates(address).ok().and_then(|c| c.into_iter().next()) else { return String::new() };
+    let Some(first) = Endpoint::candidates(address).ok().and_then(|c| c.into_iter().next()) else {
+        return String::new();
+    };
     match first {
         Endpoint::Tcp { host, .. } | Endpoint::Tls { host, .. } => {
             if host.parse::<std::net::IpAddr>().is_ok() {
@@ -1059,8 +1150,14 @@ fn host_add(ws: &mut Workspace, address: Option<&str>, label: Option<&str>, cx: 
     }
     let Some(label) = label else {
         ws.palette = Some(
-            Palette::input("Name the Host", "client.host.add", json!({"address": address}), "label", &suggested_label(address))
-                .placeholder("A name to connect to it by"),
+            Palette::input(
+                "Name the Host",
+                "client.host.add",
+                json!({"address": address}),
+                "label",
+                &suggested_label(address),
+            )
+            .placeholder("A name to connect to it by"),
         );
         return Ok(Value::Null);
     };
@@ -1097,7 +1194,10 @@ fn host_remove(ws: &mut Workspace, host: Option<&str>, cx: &mut Context<Workspac
                 .server
                 .hosts
                 .iter()
-                .map(|h| Item::new(h.label.clone(), "client.host.remove", json!({"host": h.id})).detail(h.endpoints.join(", ")))
+                .map(|h| {
+                    Item::new(h.label.clone(), "client.host.remove", json!({"host": h.id}))
+                        .detail(h.endpoints.join(", "))
+                })
                 .collect()
         };
         ws.palette = Some(Palette::pick(TITLE, items(ws.store.read(cx))).empty("There are no hosts"));
@@ -1117,7 +1217,9 @@ fn host_remove(ws: &mut Workspace, host: Option<&str>, cx: &mut Context<Workspac
             this.update(cx, |ws, cx| show_error(ws, format!("no host is called {query}"), cx)).ok();
             return;
         };
-        let Ok(remove) = this.update(cx, |ws, cx| home_call(ws, "hosts.remove", json!({"id": found.id}), cx)) else { return };
+        let Ok(remove) = this.update(cx, |ws, cx| home_call(ws, "hosts.remove", json!({"id": found.id}), cx)) else {
+            return;
+        };
         let result = remove.await;
         this.update(cx, |ws, cx| match result {
             Ok(_) => ws.store.update(cx, |s, cx| {
@@ -1167,7 +1269,10 @@ mod tests {
     fn resolves_switch_targets() {
         let home = Endpoint::Unix("/run/user/1000/rex/server.sock".into());
         let hosts = hosts();
-        assert_eq!(resolve("local", &hosts, &home).unwrap(), Destination { label: None, candidates: vec![home.clone()] });
+        assert_eq!(
+            resolve("local", &hosts, &home).unwrap(),
+            Destination { label: None, candidates: vec![home.clone()] }
+        );
         assert_eq!(resolve(&home.to_string(), &hosts, &home).unwrap().label, None);
         let attic = resolve("attic", &hosts, &home).unwrap();
         // The socket path doesn't exist here, so only the URL is tried.
@@ -1183,7 +1288,8 @@ mod tests {
 
     #[test]
     fn host_candidates_skip_missing_sockets_and_repeats() {
-        let addrs = vec!["unix:///here.sock".to_string(), "unix:///gone.sock".into(), "box:1".into(), "https://box:1".into()];
+        let addrs =
+            vec!["unix:///here.sock".to_string(), "unix:///gone.sock".into(), "box:1".into(), "https://box:1".into()];
         let found = host_candidates(&addrs, |p| p == Path::new("/here.sock"));
         assert_eq!(
             found,
@@ -1227,7 +1333,9 @@ mod tests {
         assert_eq!(tailscale_state(&json!({"state": "running", "https": {"state": "available"}})), "on");
         assert_eq!(tailscale_state(&json!({"state": "running"})), "on, HTTPS pending");
         assert_eq!(tailscale_state(&json!({"state": "something new"})), "starting");
-        let row = tailscale_row(Some(&json!({"state": "running", "dns_name": "rex.ts.net", "account": {"login_name": "a@b.c"}, "https": {"state": "available", "url": "https://rex.ts.net"}})));
+        let row = tailscale_row(Some(
+            &json!({"state": "running", "dns_name": "rex.ts.net", "account": {"login_name": "a@b.c"}, "https": {"state": "available", "url": "https://rex.ts.net"}}),
+        ));
         assert_eq!(row.label, "Tailscale: on");
         assert_eq!(row.detail, "https://rex.ts.net, a@b.c");
         assert_eq!(tailscale_row(None).label, "Tailscale: not available");
@@ -1242,7 +1350,9 @@ mod tests {
                 "config": {"generation": 2, "hash": "abcdef0123456789"},
                 "listeners": [{"endpoint": "unix:///s.sock", "transport": "unix", "admission": "peer_credentials", "primary": true}],
             }))),
-            whoami: Some(Ok(json!({"principal": {"kind": "peer", "transport": "unix", "display": "uid 1000", "remote_addr": "@"}, "account": "goody"}))),
+            whoami: Some(Ok(
+                json!({"principal": {"kind": "peer", "transport": "unix", "display": "uid 1000", "remote_addr": "@"}, "account": "goody"}),
+            )),
             clients: Some(Ok(json!({"clients": [
                 {"client_id": "client:me", "info": {"kind": "app", "platform": "linux", "name": "OpenRex", "version": "0.1.0", "label": "desk"},
                  "principal": {"display": "uid 1000", "transport": "unix"}, "connected_at": "2026-11-13T10:00:00.1Z", "session_ids": ["s1"]},
@@ -1275,7 +1385,10 @@ mod tests {
         assert!(labels.contains(&"warning init.lua:3: unknown action"));
         let me = all.iter().find(|r| r.section == "client" && r.label == "OpenRex 0.1.0").unwrap();
         assert_eq!(me.mark, "this client");
-        assert_eq!(me.detail, "label desk, app on linux, uid 1000 over unix, 1 session, connected 2026-11-13T10:00:00Z, client:me");
+        assert_eq!(
+            me.detail,
+            "label desk, app on linux, uid 1000 over unix, 1 session, connected 2026-11-13T10:00:00Z, client:me"
+        );
         assert_eq!(all.iter().find(|r| r.label == "client:old").unwrap().mark, "lost");
         let you = all.iter().find(|r| r.section == "you").unwrap();
         assert_eq!(you.text(), "You are uid 1000: over unix, the server runs as goody");

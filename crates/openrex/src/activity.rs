@@ -98,7 +98,12 @@ impl Record {
     pub fn from_json(id: Option<&str>, v: &Value) -> Option<Record> {
         let state = v["state"].as_str()?.to_string();
         let text = |k: &str| v[k].as_str().map(sanitize).unwrap_or_default();
-        let app = v["effective_app"].as_str().filter(|a| !a.is_empty()).or(v["app"].as_str()).map(sanitize).unwrap_or_default();
+        let app = v["effective_app"]
+            .as_str()
+            .filter(|a| !a.is_empty())
+            .or(v["app"].as_str())
+            .map(sanitize)
+            .unwrap_or_default();
         Some(Record {
             id: id.or(v["id"].as_str()).unwrap_or("").to_string(),
             state,
@@ -163,12 +168,18 @@ pub struct Progress {
 impl Progress {
     /// Reads a `progress_report`. `Ok(None)` for `remove`, and an error for a
     /// state the client doesn't know, which leaves the last report standing.
+    // The unit error only means "unknown state": callers keep the last report.
+    #[allow(clippy::result_unit_err)]
     pub fn from_report(p: &Value) -> Result<Option<Progress>, ()> {
         let state = p["state"].as_str().unwrap_or("");
         match state {
             "set" | "indeterminate" | "pause" | "error" => Ok(Some(Progress {
                 state: state.to_string(),
-                progress: if state == "indeterminate" { None } else { p["progress"].as_u64().map(|v| v.min(100) as u8) },
+                progress: if state == "indeterminate" {
+                    None
+                } else {
+                    p["progress"].as_u64().map(|v| v.min(100) as u8)
+                },
             })),
             "remove" => Ok(None),
             _ => Err(()),
@@ -244,22 +255,26 @@ impl BlockState {
         // A program that reports its status says more than its progress
         // reports, so those count only without records, as the protocol
         // suggests.
-        if self.records.is_empty() {
-            if let Some(p) = &self.progress {
-                out.push(Entry { level: p.level(), message: p.message(), progress: p.progress, ..base.clone() });
-            }
+        if self.records.is_empty()
+            && let Some(p) = &self.progress
+        {
+            out.push(Entry { level: p.level(), message: p.message(), progress: p.progress, ..base.clone() });
         }
         if self.bell {
             out.push(Entry { level: Level::Bell, message: "Rang the bell".into(), ..base.clone() });
         }
         match self.exited {
-            Some(0) if !self.exit_seen => out.push(Entry { level: Level::Done, message: "Exited".into(), ..base.clone() }),
+            Some(0) if !self.exit_seen => {
+                out.push(Entry { level: Level::Done, message: "Exited".into(), ..base.clone() })
+            }
             // The server says -1 when a signal ended the program.
             Some(-1) => out.push(Entry { level: Level::Error, message: "Ended by a signal".into(), ..base.clone() }),
-            Some(code) if code != 0 => out.push(Entry { level: Level::Error, message: format!("Exited with code {code}"), ..base.clone() }),
+            Some(code) if code != 0 => {
+                out.push(Entry { level: Level::Error, message: format!("Exited with code {code}"), ..base.clone() })
+            }
             _ => {}
         }
-        out.sort_by(|a, b| b.level.cmp(&a.level));
+        out.sort_by_key(|a| std::cmp::Reverse(a.level));
         out
     }
 }
@@ -398,7 +413,8 @@ impl Tracker {
     }
 
     pub fn forget_session(&mut self, session_id: &str) {
-        let gone: Vec<String> = self.blocks.iter().filter(|(_, b)| b.session_id == session_id).map(|(id, _)| id.clone()).collect();
+        let gone: Vec<String> =
+            self.blocks.iter().filter(|(_, b)| b.session_id == session_id).map(|(id, _)| id.clone()).collect();
         for id in gone {
             self.forget(&id);
         }
@@ -624,7 +640,13 @@ pub(crate) fn perform(
 /// returns already has the terminal's tab active. Focusing after the attach
 /// could leave the old tab showing, as the store ignores a session's view
 /// changes until its attach returns.
-fn go_to(ws: &mut Workspace, session: String, block: String, window: &mut Window, cx: &mut Context<Workspace>) -> Outcome {
+fn go_to(
+    ws: &mut Workspace,
+    session: String,
+    block: String,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> Outcome {
     let payload = json!({"session_id": session, "block_id": block});
     ws.store.update(cx, |s, cx| s.request("session.focus_block", payload, cx));
     if ws.store.read(cx).current.as_deref() != Some(session.as_str()) {
@@ -645,10 +667,14 @@ fn open_palette(ws: &mut Workspace, cx: &mut Context<Workspace>) {
                 (Level::Working, Some(p)) => format!("working {p}%"),
                 (level, _) => level.word().to_string(),
             };
-            Item::new(shorten(&e.headline, 60), "pane.view_activity", json!({"session": e.session_id, "block": e.block_id}))
-                .detail(format!("{} — {place}", shorten(&e.message, MESSAGE_CHARS)))
-                .hint(state)
-                .keywords(format!("{} {}", e.level.word(), e.level.group()))
+            Item::new(
+                shorten(&e.headline, 60),
+                "pane.view_activity",
+                json!({"session": e.session_id, "block": e.block_id}),
+            )
+            .detail(format!("{} — {place}", shorten(&e.message, MESSAGE_CHARS)))
+            .hint(state)
+            .keywords(format!("{} {}", e.level.word(), e.level.group()))
         })
         .collect();
     ws.palette = Some(Palette::pick("Activity", items).empty("No program is doing anything"));
@@ -723,21 +749,45 @@ pub(crate) fn pane_border(ws: &Workspace, block_id: &str, normal: Hsla) -> Hsla 
 }
 
 /// Opens Rename Tab on a double click. Says whether it did.
-pub(crate) fn tab_double_clicked(ws: &mut Workspace, window_id: &str, ev: &ClickEvent, window: &mut Window, cx: &mut Context<Workspace>) -> bool {
+pub(crate) fn tab_double_clicked(
+    ws: &mut Workspace,
+    window_id: &str,
+    ev: &ClickEvent,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> bool {
     if ev.click_count() != 2 {
         return false;
     }
-    let outcome = ws.perform("client.tab.rename", &json!({"window": window_id}), Target { origin: "mouse".into(), ..Default::default() }, window, cx);
+    let outcome = ws.perform(
+        "client.tab.rename",
+        &json!({"window": window_id}),
+        Target { origin: "mouse".into(), ..Default::default() },
+        window,
+        cx,
+    );
     report(ws, "client.tab.rename", outcome, cx);
     true
 }
 
 /// Opens Rename Session on a double click. Says whether it did.
-pub(crate) fn session_double_clicked(ws: &mut Workspace, session_id: &str, ev: &ClickEvent, window: &mut Window, cx: &mut Context<Workspace>) -> bool {
+pub(crate) fn session_double_clicked(
+    ws: &mut Workspace,
+    session_id: &str,
+    ev: &ClickEvent,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> bool {
     if ev.click_count() != 2 {
         return false;
     }
-    let outcome = ws.perform("session.rename", &json!({"session": session_id}), Target { origin: "mouse".into(), ..Default::default() }, window, cx);
+    let outcome = ws.perform(
+        "session.rename",
+        &json!({"session": session_id}),
+        Target { origin: "mouse".into(), ..Default::default() },
+        window,
+        cx,
+    );
     report(ws, "session.rename", outcome, cx);
     true
 }
@@ -863,13 +913,22 @@ pub(crate) fn render_sidebar(ws: &Workspace, cx: &mut Context<Workspace>) -> imp
     let entries = store.activity.entries();
     let mut list = div().id("activity-list").flex().flex_col().flex_1().overflow_y_scroll();
     if entries.is_empty() {
-        list = list.child(div().px_3().py_2().text_color(colors::dim()).text_size(px(12.0)).child("Nothing is happening."));
+        list = list
+            .child(div().px_3().py_2().text_color(colors::dim()).text_size(px(12.0)).child("Nothing is happening."));
     }
     let mut group = None;
     for (i, e) in entries.iter().enumerate() {
         if group != Some(e.level) {
             group = Some(e.level);
-            list = list.child(div().px_3().pt_2().pb_1().text_size(px(10.0)).text_color(colors::dim()).child(e.level.group().to_uppercase()));
+            list = list.child(
+                div()
+                    .px_3()
+                    .pt_2()
+                    .pb_1()
+                    .text_size(px(10.0))
+                    .text_color(colors::dim())
+                    .child(e.level.group().to_uppercase()),
+            );
         }
         let (session, block) = (e.session_id.clone(), e.block_id.clone());
         let place = location(store, e, cx);
@@ -886,16 +945,39 @@ pub(crate) fn render_sidebar(ws: &Workspace, cx: &mut Context<Workspace>) -> imp
                     let outcome = go_to(this, session.clone(), block.clone(), window, cx);
                     report(this, "pane.view_activity", outcome, cx);
                 }))
-                .child(div().flex().items_center().justify_center().flex_shrink_0().w(px(14.0)).h(px(17.0)).children(badge(e.level, e.progress)))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .flex_shrink_0()
+                        .w(px(14.0))
+                        .h(px(17.0))
+                        .children(badge(e.level, e.progress)),
+                )
                 .child(
                     div()
                         .flex()
                         .flex_col()
                         .flex_1()
                         .min_w_0()
-                        .child(div().truncate().text_color(colors::text()).child(SharedString::from(e.headline.clone())))
-                        .child(div().truncate().text_size(px(11.0)).text_color(colors::dim()).child(SharedString::from(shorten(&e.message, MESSAGE_CHARS))))
-                        .child(div().truncate().text_size(px(10.0)).text_color(colors::dim()).child(SharedString::from(place))),
+                        .child(
+                            div().truncate().text_color(colors::text()).child(SharedString::from(e.headline.clone())),
+                        )
+                        .child(
+                            div()
+                                .truncate()
+                                .text_size(px(11.0))
+                                .text_color(colors::dim())
+                                .child(SharedString::from(shorten(&e.message, MESSAGE_CHARS))),
+                        )
+                        .child(
+                            div()
+                                .truncate()
+                                .text_size(px(10.0))
+                                .text_color(colors::dim())
+                                .child(SharedString::from(place)),
+                        ),
                 ),
         );
     }
@@ -940,8 +1022,14 @@ mod tests {
 
     #[test]
     fn reads_progress_reports() {
-        assert_eq!(Progress::from_report(&json!({"state": "set", "progress": 40})), Ok(Some(Progress { state: "set".into(), progress: Some(40) })));
-        assert_eq!(Progress::from_report(&json!({"state": "indeterminate", "progress": 40})).unwrap().unwrap().progress, None);
+        assert_eq!(
+            Progress::from_report(&json!({"state": "set", "progress": 40})),
+            Ok(Some(Progress { state: "set".into(), progress: Some(40) }))
+        );
+        assert_eq!(
+            Progress::from_report(&json!({"state": "indeterminate", "progress": 40})).unwrap().unwrap().progress,
+            None
+        );
         assert_eq!(Progress::from_report(&json!({"state": "error"})).unwrap().unwrap().level(), Level::Error);
         assert_eq!(Progress::from_report(&json!({"state": "remove"})), Ok(None));
         assert!(Progress::from_report(&json!({"state": "later"})).is_err());
@@ -950,8 +1038,14 @@ mod tests {
     #[test]
     fn status_events_replace_and_remove_records() {
         let mut t = tracker_with(&[
-            ("program_status_changed", json!({"id": "", "record": {"state": "working", "app": "cargo"}, "reason": "report"})),
-            ("program_status_changed", json!({"id": "test", "record": {"id": "test", "state": "blocked", "msg": "Approve?"}, "reason": "report"})),
+            (
+                "program_status_changed",
+                json!({"id": "", "record": {"state": "working", "app": "cargo"}, "reason": "report"}),
+            ),
+            (
+                "program_status_changed",
+                json!({"id": "test", "record": {"id": "test", "state": "blocked", "msg": "Approve?"}, "reason": "report"}),
+            ),
         ]);
         let s = t.summary(["b"]).unwrap();
         assert_eq!((s.level, s.count), (Level::Blocked, 1));
@@ -1010,7 +1104,12 @@ mod tests {
     #[test]
     fn summaries_take_the_most_urgent_and_count_it() {
         let mut t = Tracker::default();
-        t.on_event("s1", "a", "program_status_changed", &json!({"id": "", "record": {"state": "working", "progress": 10}}));
+        t.on_event(
+            "s1",
+            "a",
+            "program_status_changed",
+            &json!({"id": "", "record": {"state": "working", "progress": 10}}),
+        );
         t.on_event("s1", "b", "program_status_changed", &json!({"id": "", "record": {"state": "working"}}));
         t.on_event("s2", "c", "bell", &json!({}));
         assert_eq!(t.summary(["a", "b"]), Some(Summary { level: Level::Working, progress: Some(10), count: 2 }));

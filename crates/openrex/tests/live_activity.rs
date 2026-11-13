@@ -60,7 +60,8 @@ fn the_tracker_follows_a_live_terminal() {
         let deadline = Instant::now() + Duration::from_secs(5);
         let complete = |t: &Tracker| {
             let b = t.get(&block_id);
-            t.title(&block_id) == Some("live title") && b.is_some_and(|b| b.bell && b.progress.is_some() && !b.records.is_empty())
+            t.title(&block_id) == Some("live title")
+                && b.is_some_and(|b| b.bell && b.progress.is_some() && !b.records.is_empty())
         };
         while !complete(&tracker) && Instant::now() < deadline {
             let next = futures::select! {
@@ -73,18 +74,32 @@ fn the_tracker_follows_a_live_terminal() {
             }
             let sid = ev.payload["session_id"].as_str().unwrap_or("");
             let p = &ev.payload["event"]["payload"];
-            tracker.on_event(sid, p["block_id"].as_str().unwrap_or(""), p["name"].as_str().unwrap_or(""), &p["payload"]);
+            tracker.on_event(
+                sid,
+                p["block_id"].as_str().unwrap_or(""),
+                p["name"].as_str().unwrap_or(""),
+                &p["payload"],
+            );
         }
         assert!(complete(&tracker), "events never arrived: {:?}", tracker.get(&block_id));
         let entries = tracker.block_entries(&block_id);
-        assert_eq!((entries[0].level, entries[0].headline.as_str(), entries[0].message.as_str()), (Level::Blocked, "live", "Which one?"));
+        assert_eq!(
+            (entries[0].level, entries[0].headline.as_str(), entries[0].message.as_str()),
+            (Level::Blocked, "live", "Which one?")
+        );
         assert_eq!(tracker.session_summary(&session_id).unwrap().level, Level::Blocked);
 
         // A client that wasn't listening learns the same from the methods.
         let mut fresh = Tracker::default();
-        let title = control.block_call("com.superlogical.terminal.title", &session_id, &block_id, json!({})).await.expect("title");
+        let title = control
+            .block_call("com.superlogical.terminal.title", &session_id, &block_id, json!({}))
+            .await
+            .expect("title");
         fresh.fetched_title(&session_id, &block_id, title["title"].as_str().unwrap_or(""));
-        let status = control.block_call("com.superlogical.terminal.program_status", &session_id, &block_id, json!({})).await.expect("program_status");
+        let status = control
+            .block_call("com.superlogical.terminal.program_status", &session_id, &block_id, json!({}))
+            .await
+            .expect("program_status");
         fresh.fetched_status(&session_id, &block_id, &status);
         assert_eq!(fresh.title(&block_id), Some("live title"));
         assert_eq!(fresh.summary([block_id.as_str()]).unwrap().level, Level::Blocked);
@@ -103,7 +118,12 @@ fn the_tracker_follows_a_live_terminal() {
             let Some(ev) = next else { continue };
             if ev.name == "session_event" && ev.payload["event"]["type"] == "block_event" {
                 let p = &ev.payload["event"]["payload"];
-                tracker.on_event(&session_id, p["block_id"].as_str().unwrap_or(""), p["name"].as_str().unwrap_or(""), &p["payload"]);
+                tracker.on_event(
+                    &session_id,
+                    p["block_id"].as_str().unwrap_or(""),
+                    p["name"].as_str().unwrap_or(""),
+                    &p["payload"],
+                );
             }
         }
         control.call("session.destroy", json!({"session_id": session_id})).await.ok();

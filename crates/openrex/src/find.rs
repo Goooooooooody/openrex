@@ -11,16 +11,16 @@
 //! starts from the prompt at the bottom. Matches are counted newest first,
 //! so the count climbs as Find Next goes up.
 
-use gpui::{
-    App, BorderStyle, Bounds, Context, Div, Entity, Hsla, InteractiveElement, KeyDownEvent, ParentElement,
-    Pixels, SharedString, Styled, Window, div, fill, outline, point, px, rgb, size,
-};
 use ghostty_vt::Terminal;
 use ghostty_vt::fmt::Format;
 use ghostty_vt::screen::{CellWide, GridRef};
 use ghostty_vt::search::{Search, Status};
 use ghostty_vt::selection::{FormatOptions, Selection};
 use ghostty_vt::terminal::{PointCoordinate, PointSpace};
+use gpui::{
+    App, BorderStyle, Bounds, Context, Div, Entity, Hsla, InteractiveElement, KeyDownEvent, ParentElement, Pixels,
+    SharedString, Styled, Window, div, fill, outline, point, px, rgb, size,
+};
 use serde_json::{Value, json};
 
 use crate::actions::{Outcome, Target};
@@ -297,7 +297,12 @@ pub struct Mark {
 /// The runs of cells a match covers in the view, from its first cell to its
 /// last (inclusive). A missing end is outside the view: a missing start is
 /// above it, a missing end below.
-fn segments(start: Option<PointCoordinate>, end: Option<PointCoordinate>, cols: u16, rows: u16) -> Vec<(u16, u16, u16)> {
+fn segments(
+    start: Option<PointCoordinate>,
+    end: Option<PointCoordinate>,
+    cols: u16,
+    rows: u16,
+) -> Vec<(u16, u16, u16)> {
     if (start.is_none() && end.is_none()) || cols == 0 || rows == 0 {
         return Vec::new();
     }
@@ -476,12 +481,7 @@ impl Finder {
         if self.exact.as_ref().is_some_and(|(t, _)| *t == total) {
             return;
         }
-        let flags = search
-            .matches(term)
-            .unwrap_or_default()
-            .iter()
-            .map(|m| has_case(term, m, &self.needle))
-            .collect();
+        let flags = search.matches(term).unwrap_or_default().iter().map(|m| has_case(term, m, &self.needle)).collect();
         self.exact = Some((total, flags));
     }
 
@@ -523,7 +523,12 @@ impl Finder {
             {
                 e.x = (e.x + 1).min(cols.saturating_sub(1));
             }
-            out.extend(segments(start, end, cols, rows).into_iter().map(|(row, col, width)| Mark { row, col, width, current }));
+            out.extend(segments(start, end, cols, rows).into_iter().map(|(row, col, width)| Mark {
+                row,
+                col,
+                width,
+                current,
+            }));
         };
         for m in search.viewport_matches(term).unwrap_or_default() {
             add(&m, false, &mut out);

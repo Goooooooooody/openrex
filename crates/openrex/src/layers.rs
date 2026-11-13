@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 
 use gpui::{
     AnyElement, BoxShadow, Context, CursorStyle, DispatchPhase, Hsla, InteractiveElement, IntoElement, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, SharedString, StatefulInteractiveElement,
-    Styled, Window, canvas, div, hsla, point, px, relative, rgb,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, SharedString,
+    StatefulInteractiveElement, Styled, Window, canvas, div, hsla, point, px, relative, rgb,
 };
 use openrex_proto::types::{Layer, SessionView, Window as RexWindow};
 use serde_json::{Value, json};
@@ -123,12 +123,7 @@ fn inner_rect(rect: [f32; 4], bounds: [f32; 4]) -> [f32; 4] {
     if bounds[2] <= 0.0 || bounds[3] <= 0.0 {
         return [0.0, 0.0, 1.0, 1.0];
     }
-    [
-        (rect[0] - bounds[0]) / bounds[2],
-        (rect[1] - bounds[1]) / bounds[3],
-        rect[2] / bounds[2],
-        rect[3] / bounds[3],
-    ]
+    [(rect[0] - bounds[0]) / bounds[2], (rect[1] - bounds[1]) / bounds[3], rect[2] / bounds[2], rect[3] / bounds[3]]
 }
 
 /// Where a new floating layer goes: stepped down and right of the ones
@@ -473,7 +468,12 @@ fn colors() -> Colors {
 
 /// Every showing floating layer of a window, back to front, to draw over
 /// its tiled layout.
-pub(crate) fn render_floating(ws: &Workspace, win: &RexWindow, window: &Window, cx: &mut Context<Workspace>) -> Vec<AnyElement> {
+pub(crate) fn render_floating(
+    ws: &Workspace,
+    win: &RexWindow,
+    window: &Window,
+    cx: &mut Context<Workspace>,
+) -> Vec<AnyElement> {
     if win.zoomed_block_id.is_some() {
         // A zoomed block is drawn alone, over the whole window.
         return Vec::new();
@@ -512,7 +512,7 @@ fn drag_listener(cx: &mut Context<Workspace>) -> impl IntoElement {
             });
             window.on_mouse_event(move |ev: &MouseUpEvent, phase, _, cx| {
                 if phase == DispatchPhase::Capture && ev.button == MouseButton::Left {
-                    this.update(cx, |ws, cx| drag_end(ws, cx));
+                    this.update(cx, drag_end);
                 }
             });
         },
@@ -543,7 +543,8 @@ fn render_layer(
     for (block_id, r) in leaves {
         let Some(pane) = store.panes.get(&block_id) else { continue };
         let r = inner_rect(r, layer.bounds);
-        let focused = win.focused_block_id.as_deref() == Some(block_id.as_str()) && pane.read(cx).focus.is_focused(window);
+        let focused =
+            win.focused_block_id.as_deref() == Some(block_id.as_str()) && pane.read(cx).focus.is_focused(window);
         // A lone block needs no border of its own inside the layer's.
         let border = match (focused, layer.blocks.len() > 1) {
             (_, false) => c.bg,
@@ -565,13 +566,7 @@ fn render_layer(
 
     let title = layer_title(ws, win, layer, cx);
     let button = |name: &'static str, glyph: &'static str, hover: Hsla| {
-        div()
-            .id(name)
-            .px_1()
-            .cursor_pointer()
-            .text_color(c.dim)
-            .hover(move |s| s.text_color(hover))
-            .child(glyph)
+        div().id(name).px_1().cursor_pointer().text_color(c.dim).hover(move |s| s.text_color(hover)).child(glyph)
     };
     let (min_id, dock_id, close_id, bar_id, grip_id, raise_id) =
         (id.clone(), id.clone(), id.clone(), id.clone(), id.clone(), id.clone());
@@ -827,21 +822,17 @@ mod tests {
 
     #[test]
     fn minimize_all_keeps_a_pane_in_sight() {
-        let w = win(
-            r#"{"window_id":"w","focused_block_id":"a","layers":[
+        let w = win(r#"{"window_id":"w","focused_block_id":"a","layers":[
             {"layer_id":"tiled","kind":"tiled","bounds":[0,0,1,1],"layout":null,"blocks":[]},
             {"layer_id":"f1","kind":"floating","bounds":[0.1,0.1,0.5,0.5],"layout":{"rect":[0.1,0.1,0.5,0.5],"block_id":"a"},"blocks":[{"block_id":"a"}]},
-            {"layer_id":"f2","kind":"floating","bounds":[0.2,0.2,0.5,0.5],"layout":{"rect":[0.2,0.2,0.5,0.5],"block_id":"b"},"blocks":[{"block_id":"b"}]}]}"#,
-        );
+            {"layer_id":"f2","kind":"floating","bounds":[0.2,0.2,0.5,0.5],"layout":{"rect":[0.2,0.2,0.5,0.5],"block_id":"b"},"blocks":[{"block_id":"b"}]}]}"#);
         assert_eq!(minimize_all_choice(&w), vec![("f1".to_string(), true)]);
         assert!(dock_moves(&w, &["a".to_string()], 1.6).is_err());
         // With only the kept one showing, pressing it again brings the rest back.
-        let w = win(
-            r#"{"window_id":"w","focused_block_id":"b","layers":[
+        let w = win(r#"{"window_id":"w","focused_block_id":"b","layers":[
             {"layer_id":"tiled","kind":"tiled","layout":null,"blocks":[]},
             {"layer_id":"f1","kind":"floating","state":"minimized","layout":{"rect":[0.1,0.1,0.5,0.5],"block_id":"a"},"blocks":[{"block_id":"a"}]},
-            {"layer_id":"f2","kind":"floating","layout":{"rect":[0.2,0.2,0.5,0.5],"block_id":"b"},"blocks":[{"block_id":"b"}]}]}"#,
-        );
+            {"layer_id":"f2","kind":"floating","layout":{"rect":[0.2,0.2,0.5,0.5],"block_id":"b"},"blocks":[{"block_id":"b"}]}]}"#);
         assert_eq!(minimize_all_choice(&w), vec![("f1".to_string(), false)]);
     }
 
@@ -849,31 +840,25 @@ mod tests {
     fn knows_when_a_layer_holds_the_last_visible_pane() {
         // A tiled pane stays in sight whatever floats.
         assert!(!hides_last(&two_floating("t", "", ""), "f2"));
-        let w = win(
-            r#"{"window_id":"w","layers":[
+        let w = win(r#"{"window_id":"w","layers":[
             {"layer_id":"tiled","kind":"tiled","layout":null,"blocks":[]},
             {"layer_id":"f1","kind":"floating","state":"minimized","layout":{"rect":[0.1,0.1,0.5,0.5],"block_id":"a"},"blocks":[{"block_id":"a"}]},
-            {"layer_id":"f2","kind":"floating","layout":{"rect":[0.2,0.2,0.5,0.5],"block_id":"b"},"blocks":[{"block_id":"b"}]}]}"#,
-        );
+            {"layer_id":"f2","kind":"floating","layout":{"rect":[0.2,0.2,0.5,0.5],"block_id":"b"},"blocks":[{"block_id":"b"}]}]}"#);
         assert!(hides_last(&w, "f2"));
-        let w = win(
-            r#"{"window_id":"w","layers":[
+        let w = win(r#"{"window_id":"w","layers":[
             {"layer_id":"tiled","kind":"tiled","layout":null,"blocks":[]},
             {"layer_id":"f1","kind":"floating","layout":{"rect":[0.1,0.1,0.5,0.5],"block_id":"a"},"blocks":[{"block_id":"a"}]},
-            {"layer_id":"f2","kind":"floating","layout":{"rect":[0.2,0.2,0.5,0.5],"block_id":"b"},"blocks":[{"block_id":"b"}]}]}"#,
-        );
+            {"layer_id":"f2","kind":"floating","layout":{"rect":[0.2,0.2,0.5,0.5],"block_id":"b"},"blocks":[{"block_id":"b"}]}]}"#);
         assert!(!hides_last(&w, "f2"));
     }
 
     #[test]
     fn docks_beside_the_largest_tiled_pane() {
-        let w = win(
-            r#"{"window_id":"w","layers":[
+        let w = win(r#"{"window_id":"w","layers":[
             {"layer_id":"tiled","kind":"tiled","layout":{"rect":[0,0,1,1],"split":{"direction":"horizontal","ratio":0.3,
               "before":{"rect":[0,0,0.3,1],"block_id":"small"},"after":{"rect":[0.3,0,0.7,1],"block_id":"big"}}},
              "blocks":[{"block_id":"small"},{"block_id":"big"}]},
-            {"layer_id":"f","kind":"floating","bounds":[0.1,0.1,0.5,0.5],"layout":{"rect":[0.1,0.1,0.5,0.5],"block_id":"x"},"blocks":[{"block_id":"x"}]}]}"#,
-        );
+            {"layer_id":"f","kind":"floating","bounds":[0.1,0.1,0.5,0.5],"layout":{"rect":[0.1,0.1,0.5,0.5],"block_id":"x"},"blocks":[{"block_id":"x"}]}]}"#);
         let moves = dock_moves(&w, &["x".to_string(), "y".to_string()], 1.6).unwrap();
         assert_eq!(moves[0]["anchor_block_id"], "big");
         assert_eq!(moves[0]["direction"], "horizontal");
