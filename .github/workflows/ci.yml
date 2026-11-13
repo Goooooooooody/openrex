@@ -36,6 +36,11 @@ jobs:
       # Zig, pinned in mise.toml, builds Ghostty's terminal engine.
       - uses: jdx/mise-action@v2
 
+      # Ghostty's build script runs Zig from its own directory, where the mise
+      # shim can't see mise.toml, so name the installed binary directly.
+      - name: Point the build at Zig
+        run: echo "ZIG=$(mise which zig)" >> "$GITHUB_ENV"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
