@@ -73,6 +73,7 @@ pub struct Workspace {
     pub(crate) sidebar_visible: bool,
     pub(crate) font_size: f32,
     pub(crate) base_font_size: f32,
+    pub(crate) activity: crate::activity::Ui,
 }
 
 impl Workspace {
@@ -112,6 +113,7 @@ impl Workspace {
             sidebar_visible: true,
             font_size,
             base_font_size: font_size,
+            activity: Default::default(),
         }
     }
 
@@ -383,11 +385,15 @@ impl Workspace {
                     .text_color(if active { t.text } else { t.dim })
                     .when_active(active, t.border)
                     .hover(|s| s.bg(rgb(0x24263a)))
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    .on_click(cx.listener(move |this, ev: &ClickEvent, window, cx| {
                         this.confirm_destroy = None;
+                        if crate::activity::session_double_clicked(this, &id, ev, window, cx) {
+                            return;
+                        }
                         let id = id.clone();
                         this.with_store(cx, |s, cx| s.select_session(id, cx));
                     }))
+                    .when_some_el(crate::activity::session_badge(store, &session.id))
                     .child(div().flex_1().min_w_0().truncate().child(SharedString::from(session.label.clone())))
                     .child(
                         div()
@@ -419,7 +425,7 @@ impl Workspace {
             .bg(t.panel)
             .border_r_1()
             .border_color(t.border)
-            .child(div().px_3().py_2().text_color(t.dim).text_size(px(11.0)).child("SESSIONS"))
+            .child(crate::activity::sidebar_header(self, cx))
             .child(list)
             .child(
                 div()
@@ -454,7 +460,7 @@ impl Workspace {
             let Some(window_id) = win.window_id.clone() else { continue };
             let active = view.active_window_id.as_deref() == Some(window_id.as_str());
             let title = tab_title(win, store, cx);
-            let (focus_id, close_id) = (window_id.clone(), window_id);
+            let (focus_id, close_id, middle_id) = (window_id.clone(), window_id.clone(), window_id);
             bar = bar.child(
                 div()
                     .id(("tab", i))
@@ -469,10 +475,21 @@ impl Workspace {
                     .border_color(t.border)
                     .text_color(if active { t.text } else { t.dim })
                     .when_active(active, t.bg)
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    .on_click(cx.listener(move |this, ev: &ClickEvent, window, cx| {
+                        if crate::activity::tab_double_clicked(this, &focus_id, ev, window, cx) {
+                            return;
+                        }
                         let id = focus_id.clone();
                         this.with_store(cx, |s, cx| s.focus_window(id, cx));
                     }))
+                    .on_mouse_up(
+                        MouseButton::Middle,
+                        cx.listener(move |this, _: &MouseUpEvent, _, cx| {
+                            let id = middle_id.clone();
+                            this.with_store(cx, |s, cx| s.close_window(id, cx));
+                        }),
+                    )
+                    .when_some_el(crate::activity::tab_badge(store, win))
                     .child(div().min_w_0().truncate().child(SharedString::from(title)))
                     .child(
                         div()
@@ -546,7 +563,7 @@ impl Workspace {
                         .w(relative(r[2]))
                         .h(relative(r[3]))
                         .border_1()
-                        .border_color(border)
+                        .border_color(crate::activity::pane_border(self, &block_id, border))
                         .child(pane.clone()),
                 );
             }
@@ -764,13 +781,7 @@ fn hint(text: &'static str) -> impl IntoElement {
 }
 
 fn tab_title(win: &RexWindow, store: &Store, cx: &App) -> String {
-    let from_pane = win
-        .focused_block_id
-        .as_ref()
-        .and_then(|id| store.panes.get(id))
-        .map(|p| p.read(cx).title.clone())
-        .filter(|t| !t.is_empty());
-    from_pane.unwrap_or_else(|| win.label.clone())
+    crate::activity::tab_title(win, store, cx)
 }
 
 /// Every border of a layout that can be dragged, with a block on each side.
@@ -796,6 +807,7 @@ impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.drain_requests(window, cx);
         self.sync_focus(window, cx);
+        crate::activity::sync(self, window, cx);
         let t = theme();
         let store = self.store.read(cx);
         let font = SharedString::from(store.settings.font_family.clone());
@@ -862,7 +874,10 @@ impl Render for Workspace {
                     .flex()
                     .flex_1()
                     .overflow_hidden()
-                    .when_some_el(self.sidebar_visible.then(|| self.render_sidebar(cx)))
+                    .when_some_el(self.sidebar_visible.then(|| match self.activity.sidebar {
+                        true => crate::activity::render_sidebar(self, cx).into_any_element(),
+                        false => self.render_sidebar(cx).into_any_element(),
+                    }))
                     .child(main),
             )
             .child(self.render_status(cx))
