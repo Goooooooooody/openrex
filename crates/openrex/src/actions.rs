@@ -222,7 +222,11 @@ impl Workspace {
                         self.store.update(cx, |s, cx| s.select_session(id, cx));
                         done()
                     }
-                    None => fail("not_found", format!("no session matches {want}")),
+                    None => {
+                        // Let the server look it up by any name it knows.
+                        crate::extras::resolve_session(self, want.to_string(), cx);
+                        done()
+                    }
                 }
             }
             "session.next" | "session.previous" => {

@@ -30,6 +30,14 @@ OpenRex is not made by or affiliated with Superlogical, the makers of Rex.
   owner, changed modes, and input mode. The status bar says when a program is
   reading input without echo, as at a password prompt. Copies of any size,
   from programs or from another client's selection, reach the clipboard.
+- **Everything else the API offers a person**: run another client's actions
+  (such as Rex.app's), call any method of a pane's block and read the result,
+  open a tab with any kind of block the server makes, start detached panes,
+  send a floating pane to the back, list the session's clients, set this
+  client's label while it runs, and sign the server out of Tailscale or
+  rename it there. Session names resolve through the server, so any label or
+  ID ending works. On quit, OpenRex gives up the panes it sized so another
+  client can size them.
 - **Blocks that aren't terminals**, such as Rex's onboarding walkthrough,
   show as a card you can restart or close.
 - **Links**: web links and OSC 8 hyperlinks open with Ctrl+click.

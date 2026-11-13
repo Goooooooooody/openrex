@@ -99,8 +99,14 @@ pub fn check_label(label: &str) -> Result<String, String> {
 pub fn close_on_quit(cx: &mut Context<Store>) {
     cx.on_app_quit(|store: &mut Store, _| {
         let control = store.control();
+        // Give up the blocks this client sized, so another client showing
+        // them can size them instead.
+        let sessions: Vec<String> = store.views.keys().cloned().collect();
         async move {
             if let Some(control) = control {
+                for session in sessions {
+                    control.send_nowait("session.disown_block", serde_json::json!({"session_id": session}));
+                }
                 control.close();
                 // The connection's writer runs on another thread. Give it a
                 // moment to send the close frame before the process ends.

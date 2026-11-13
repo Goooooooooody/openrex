@@ -167,6 +167,7 @@ impl Workspace {
             crate::input::perform,
             crate::graphics::perform,
             crate::inspect::perform,
+            crate::extras::perform,
         ];
         MODULES.iter().find_map(|perform| perform(self, action, args, target, window, cx))
     }

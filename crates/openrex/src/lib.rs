@@ -2,6 +2,7 @@
 
 pub mod actions;
 pub mod activity;
+pub mod extras;
 pub mod find;
 pub mod graphics;
 pub mod inspect;
