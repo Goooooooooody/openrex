@@ -736,7 +736,7 @@ impl Render for Pane {
                     move |bounds, window, cx| {
                         entity.update(cx, |pane, _| {
                             let data = pane.layout(bounds, window);
-                            let overlay = pane.ime.prepaint(data.frame.as_ref(), data.origin, &data.metrics, &data.font);
+                            let overlay = pane.ime.prepaint(data.frame.as_ref(), data.origin, &data.metrics, &data.font, data.focused);
                             (data, overlay)
                         })
                     },

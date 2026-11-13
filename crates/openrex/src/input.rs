@@ -94,17 +94,20 @@ impl Ime {
         self.marked.clear();
     }
 
-    /// True for a key press that only moves a compose sequence along, such
-    /// as the `o` of compose, `o`, `/`: the platform has just shown the
-    /// sequence so far as the composition and gives the key no text. It
-    /// mustn't reach the terminal as a key of its own, and mustn't end the
-    /// composition. Keys with ctrl, alt or super, and named keys like the
-    /// arrows, always go to the terminal.
+    /// True for a key press that only starts or moves a compose sequence
+    /// along: a dead key, or the `o` of compose, `o`, `/`. The platform's
+    /// compose handling takes the key's text away, so it reaches the pane as
+    /// a printable key with no text. A dead key whose keysym has no text is
+    /// named after the key under it (`'` for dead_acute on US international),
+    /// and a compose sequence may show no composition at all, so this can't
+    /// rely on there being one. Such a key mustn't reach the terminal as a
+    /// key of its own, and mustn't end the composition. Keys with ctrl, alt
+    /// or super, and named keys like the arrows, always go to the terminal.
     pub(crate) fn continues_composition(&self, ks: &Keystroke) -> bool {
         let m = &ks.modifiers;
         let mut chars = ks.key.chars();
         let one_char = chars.next().is_some() && chars.next().is_none();
-        !self.marked.is_empty() && ks.key_char.is_none() && !(m.control || m.alt || m.platform) && one_char
+        ks.key_char.is_none() && !(m.control || m.alt || m.platform) && one_char
     }
 
     /// Replaces the composition, which is shown but not typed.
@@ -141,7 +144,20 @@ impl Ime {
     }
 
     /// Reads what to draw over the terminal, once its frame is known.
-    pub(crate) fn prepaint(&mut self, frame: Option<&Frame>, origin: Point<Pixels>, metrics: &Metrics, font: &Font) -> Overlay {
+    /// `focused` is whether the pane has keyboard focus: a pane without it
+    /// gets no text from the input method, so a composition left in it when
+    /// focus moved on is dropped rather than drawn there for good.
+    pub(crate) fn prepaint(
+        &mut self,
+        frame: Option<&Frame>,
+        origin: Point<Pixels>,
+        metrics: &Metrics,
+        font: &Font,
+        focused: bool,
+    ) -> Overlay {
+        if !focused {
+            self.marked.clear();
+        }
         // A hidden cursor keeps its last place, so a composition in a
         // program that hides the cursor still shows where it types.
         if let Some(c) = frame.and_then(|f| f.cursor) {
@@ -154,9 +170,11 @@ impl Ime {
                 self.cursor_moved = true;
             }
         }
+        // Drawn on one line, so without line breaks or other controls.
+        let text: String = self.marked.chars().filter(|c| !c.is_control()).collect();
         let preedit = match (frame, self.cursor) {
-            (Some(frame), Some(cell)) if !self.marked.is_empty() => Some(Preedit {
-                text: self.marked.clone(),
+            (Some(frame), Some(cell)) if !text.is_empty() => Some(Preedit {
+                text,
                 at: cell.origin,
                 font: font.clone(),
                 font_size: metrics.font_size,
@@ -166,7 +184,10 @@ impl Ime {
             }),
             _ => None,
         };
-        Overlay { preedit, cursor_moved: std::mem::take(&mut self.cursor_moved) }
+        // The platform is told only while the pane has focus, so a move
+        // made without it is told once the pane has it again.
+        let cursor_moved = focused && std::mem::take(&mut self.cursor_moved);
+        Overlay { preedit, cursor_moved }
     }
 }
 
@@ -220,7 +241,7 @@ pub(crate) fn paint(
     cx: &mut App,
 ) {
     window.handle_input(focus, ElementInputHandler::new(bounds, pane.clone()), cx);
-    if overlay.cursor_moved && focus.is_focused(window) {
+    if overlay.cursor_moved {
         // Tells an input method that's waiting for text where the cursor
         // is now, so its window opens there.
         window.invalidate_character_coordinates();
@@ -554,10 +575,13 @@ mod tests {
         };
         let none = Modifiers::default();
         let mut ime = Ime::default();
-        // With nothing composing, every key goes on as before.
-        assert!(!ime.continues_composition(&ks("o", None, none)));
-        // Compose, o: the platform shows "o" as the composition and gives the
-        // key no text.
+        // Keys that type text go on as before.
+        assert!(!ime.continues_composition(&ks("o", Some("o"), none)));
+        // A dead key with no text of its own is named after the key under it,
+        // and compose, o shows no composition: neither types anything yet.
+        assert!(ime.continues_composition(&ks("'", None, none)));
+        assert!(ime.continues_composition(&ks("o", None, none)));
+        // The same while a composition is showing.
         ime.mark("o");
         assert!(ime.continues_composition(&ks("o", None, none)));
         assert!(ime.continues_composition(&ks("O", None, Modifiers { shift: true, ..none })));
@@ -593,19 +617,29 @@ mod tests {
         let font = gpui::font("monospace");
         let origin = point(px(4.0), px(4.0));
         let mut ime = Ime::default();
-        let o = ime.prepaint(Some(&frame(Some((3, 2)))), origin, &metrics, &font);
+        let o = ime.prepaint(Some(&frame(Some((3, 2)))), origin, &metrics, &font, true);
         assert!(o.preedit.is_none());
         assert!(o.cursor_moved);
         let cell = Bounds::new(point(px(34.0), px(44.0)), size(px(10.0), px(20.0)));
         assert_eq!(ime.cursor, Some(cell));
         // Nothing moved, so the platform isn't told again.
-        assert!(!ime.prepaint(Some(&frame(Some((3, 2)))), origin, &metrics, &font).cursor_moved);
+        assert!(!ime.prepaint(Some(&frame(Some((3, 2)))), origin, &metrics, &font, true).cursor_moved);
         // A hidden cursor keeps its place for the composition.
         ime.mark("に");
-        let o = ime.prepaint(Some(&frame(None)), origin, &metrics, &font);
+        let o = ime.prepaint(Some(&frame(None)), origin, &metrics, &font, true);
         let preedit = o.preedit.expect("a composition to draw");
         assert_eq!((preedit.text.as_str(), preedit.at), ("に", cell.origin));
         assert!(!o.cursor_moved);
+        // Line breaks aren't drawn.
+        ime.mark("a\nb");
+        let o = ime.prepaint(Some(&frame(None)), origin, &metrics, &font, true);
+        assert_eq!(o.preedit.expect("a composition to draw").text, "ab");
+        // Without focus, a move waits to be told, and the composition is
+        // dropped.
+        let o = ime.prepaint(Some(&frame(Some((5, 2)))), origin, &metrics, &font, false);
+        assert!(o.preedit.is_none() && !o.cursor_moved);
+        assert_eq!(ime.marked_range(), None);
+        assert!(ime.prepaint(Some(&frame(Some((5, 2)))), origin, &metrics, &font, true).cursor_moved);
     }
 
     #[test]
