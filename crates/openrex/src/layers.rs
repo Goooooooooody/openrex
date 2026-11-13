@@ -211,19 +211,18 @@ fn hides_last(win: &RexWindow, layer_id: &str) -> bool {
 /// to minimize it.
 ///
 /// It minimizes every showing floating layer, or brings them all back when
-/// all are minimized. A window must keep a pane in sight, so when its layout
-/// is empty the front-most layer stays.
+/// there is none left to minimize. A window must keep a pane in sight, so
+/// when its layout is empty the front-most layer stays.
 fn minimize_all_choice(win: &RexWindow) -> Vec<(String, bool)> {
-    let layers: Vec<&Layer> = floating(win).collect();
-    if layers.iter().all(|l| l.is_minimized()) {
-        return layers.iter().filter_map(|l| Some((l.layer_id.clone()?, false))).collect();
-    }
     let keep = if tiled_leaves(win).is_empty() { front_layer(win) } else { None };
-    layers
-        .iter()
+    let minimize: Vec<(String, bool)> = floating(win)
         .filter(|l| !l.is_minimized() && l.layer_id.as_deref() != keep)
         .filter_map(|l| Some((l.layer_id.clone()?, true)))
-        .collect()
+        .collect();
+    if !minimize.is_empty() {
+        return minimize;
+    }
+    floating(win).filter(|l| l.is_minimized()).filter_map(|l| Some((l.layer_id.clone()?, false))).collect()
 }
 
 /// The `session.move_block` payloads that dock floating blocks into the
@@ -259,8 +258,15 @@ fn active(ws: &Workspace, cx: &gpui::App) -> Option<RexWindow> {
 /// Floats the block, or docks it back into the layout if it floats already.
 fn toggle_float(ws: &mut Workspace, target: &Target, cx: &mut Context<Workspace>) -> Outcome {
     let Some(view) = ws.view(cx) else { return fail("conflict", "no session is open") };
-    let Some(win) = window_of(&view, target.block_id.as_deref()) else { return done() };
-    let Some(block) = target.block_id.clone().or_else(|| win.focused_block_id.clone()) else { return done() };
+    let Some(win) = window_of(&view, target.block_id.as_deref()) else {
+        return match &target.block_id {
+            Some(b) => fail("not_found", format!("{b} is not in a window of this session")),
+            None => done(),
+        };
+    };
+    let Some(block) = target.block_id.clone().or_else(|| win.focused_block_id.clone()) else {
+        return fail("conflict", "no pane is focused");
+    };
     if floating(win).any(|l| holds(l, &block)) {
         return dock(ws, win, vec![block], cx);
     }
@@ -422,10 +428,17 @@ fn drag_end(ws: &mut Workspace, cx: &mut Context<Workspace>) {
     cx.spawn(async move |this, cx| {
         cx.background_executor().timer(SETTLE).await;
         this.update(cx, |ws, cx| {
-            if ws.layer_drag.as_ref().is_some_and(|d| d.released && d.started == started) {
-                ws.layer_drag = None;
-                cx.notify();
+            let Some(drag) = ws.layer_drag.as_ref().filter(|d| d.released && d.started == started) else { return };
+            let (id, now) = (drag.layer_id.clone(), drag.now);
+            ws.layer_drag = None;
+            // Resizes don't run in order on the server, so an earlier one can
+            // land after the last. If the layer isn't where it was dropped,
+            // send its bounds once more.
+            let server = active(ws, cx).and_then(|w| find_layer(&w, &id).map(|l| wide(l.bounds)));
+            if server.is_some_and(|s| s.iter().zip(now).any(|(a, b)| (a - b).abs() > 1e-4)) {
+                ws.session(cx, "session.resize_layer", json!({"layer_id": id, "bounds": now})).ok();
             }
+            cx.notify();
         })
         .ok();
     })
@@ -486,12 +499,20 @@ fn drag_listener(cx: &mut Context<Workspace>) -> impl IntoElement {
             let moves = this.clone();
             window.on_mouse_event(move |ev: &MouseMoveEvent, phase, _, cx| {
                 if phase == DispatchPhase::Capture {
-                    moves.update(cx, |ws, cx| drag_move(ws, ev, cx));
+                    let dragging = moves.update(cx, |ws, cx| {
+                        drag_move(ws, ev, cx);
+                        ws.layer_drag.as_ref().is_some_and(|d| !d.released)
+                    });
+                    if dragging {
+                        // Keep the panes the mouse passes over from seeing the
+                        // drag: a program tracking the mouse would get motion.
+                        cx.stop_propagation();
+                    }
                 }
             });
             window.on_mouse_event(move |ev: &MouseUpEvent, phase, _, cx| {
                 if phase == DispatchPhase::Capture && ev.button == MouseButton::Left {
-                    this.update(cx, drag_end);
+                    this.update(cx, |ws, cx| drag_end(ws, cx));
                 }
             });
         },
@@ -576,6 +597,9 @@ fn render_layer(
                 cx.notify();
             }),
         )
+        // A quick click can come up before the window-wide drag listener is
+        // drawn, so the bar ends the drag too.
+        .on_mouse_up(MouseButton::Left, cx.listener(|ws, _: &MouseUpEvent, _, cx| drag_end(ws, cx)))
         .child(div().flex_1().min_w_0().truncate().child(SharedString::from(title)))
         .child(button("layer-minimize", "–", c.text).on_mouse_down(
             MouseButton::Left,
@@ -622,6 +646,7 @@ fn render_layer(
                 cx.notify();
             }),
         )
+        .on_mouse_up(MouseButton::Left, cx.listener(|ws, _: &MouseUpEvent, _, cx| drag_end(ws, cx)))
         .child(div().size(px(7.0)).border_r_2().border_b_2().border_color(c.dim));
 
     let shadow = BoxShadow {
@@ -810,6 +835,14 @@ mod tests {
         );
         assert_eq!(minimize_all_choice(&w), vec![("f1".to_string(), true)]);
         assert!(dock_moves(&w, &["a".to_string()], 1.6).is_err());
+        // With only the kept one showing, pressing it again brings the rest back.
+        let w = win(
+            r#"{"window_id":"w","focused_block_id":"b","layers":[
+            {"layer_id":"tiled","kind":"tiled","layout":null,"blocks":[]},
+            {"layer_id":"f1","kind":"floating","state":"minimized","layout":{"rect":[0.1,0.1,0.5,0.5],"block_id":"a"},"blocks":[{"block_id":"a"}]},
+            {"layer_id":"f2","kind":"floating","layout":{"rect":[0.2,0.2,0.5,0.5],"block_id":"b"},"blocks":[{"block_id":"b"}]}]}"#,
+        );
+        assert_eq!(minimize_all_choice(&w), vec![("f1".to_string(), false)]);
     }
 
     #[test]
