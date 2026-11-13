@@ -180,7 +180,8 @@ impl std::fmt::Display for Endpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Endpoint::Unix(p) => write!(f, "unix://{}", p.display()),
-            Endpoint::Tcp { host, port } => write!(f, "{host}:{port}"),
+            // Brackets around an IPv6 address, so the text parses back.
+            Endpoint::Tcp { .. } => write!(f, "{}", self.authority()),
             Endpoint::Tls { .. } => write!(f, "https://{}", self.authority()),
         }
     }

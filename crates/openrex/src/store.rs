@@ -164,6 +164,7 @@ impl Store {
             self.new_session(cx);
         }
         self.fetch_keymap(cx);
+        crate::server::on_connected(self, cx);
         cx.notify();
     }
 

@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use gpui::{App, AppContext, AsyncApp, Context, Task, Window};
+use gpui::{App, AsyncApp, Context, Task, Window};
 use openrex_proto::Endpoint;
 use openrex_proto::control::{self, Control, Hello};
 use serde_json::{Value, json};
@@ -111,6 +111,14 @@ pub fn close_on_quit(cx: &mut Context<Store>) {
     .detach();
 }
 
+/// Reads what the server just connected to keeps about itself. Hosts come
+/// from the home server, so only there.
+pub fn on_connected(store: &mut Store, cx: &mut Context<Store>) {
+    if store.server.host.is_none() {
+        fetch_hosts(store, cx);
+    }
+}
+
 /// Follows the events about the server itself.
 pub fn on_event(store: &mut Store, name: &str, payload: &Value, cx: &mut Context<Store>) {
     match name {
@@ -126,6 +134,10 @@ pub fn on_event(store: &mut Store, name: &str, payload: &Value, cx: &mut Context
             if store.server.login_pending {
                 if let Some(url) = payload["auth_url"].as_str().filter(|u| !u.is_empty()) {
                     give_sign_in_link(store, url);
+                } else if !wants_sign_in(s(payload, "state")) {
+                    // Signed in, or off: no link is coming. Don't open one
+                    // that a later sign-in, asked for elsewhere, makes.
+                    store.server.login_pending = false;
                 }
             }
         }
@@ -183,10 +195,7 @@ pub(crate) fn perform(
         "client.debug.copy" => copy_debug(ws, cx),
         "client.tailscale.enable" => tailscale_enable(ws, args, cx),
         "client.tailscale.disable" => tailscale_call(ws, "server.tailscale.disable", json!({}), cx),
-        "client.tailscale.login" => {
-            ws.store.update(cx, |s, _| s.server.login_pending = true);
-            tailscale_call(ws, "server.tailscale.login", json!({}), cx)
-        }
+        "client.tailscale.login" => tailscale_call(ws, "server.tailscale.login", json!({}), cx),
         "client.host.switch" => host_switch(ws, arg(args, "host"), cx),
         "client.host.add" => host_add(ws, arg(args, "address"), arg(args, "label"), cx),
         "client.host.remove" => host_remove(ws, arg(args, "host"), cx),
@@ -713,8 +722,18 @@ fn tailscale_enable(ws: &mut Workspace, args: &Value, cx: &mut Context<Workspace
 
 fn tailscale_call(ws: &mut Workspace, method: &'static str, payload: Value, cx: &mut Context<Workspace>) -> Outcome {
     control_of(ws, cx)?;
-    ws.store.update(cx, |s, cx| s.call(method, payload, cx, move |s, result, cx| tailscale_done(s, method, result, cx)));
+    ws.store.update(cx, |s, cx| {
+        // Set only once the call goes out, so a failed one leaves no
+        // sign-in waiting to open a browser later.
+        s.server.login_pending = method == "server.tailscale.login";
+        s.call(method, payload, cx, move |s, result, cx| tailscale_done(s, method, result, cx))
+    });
     Ok(Value::Null)
+}
+
+/// Whether Tailscale in `state` may still hand out a sign-in link.
+fn wants_sign_in(state: &str) -> bool {
+    !matches!(state, "running" | "disabled" | "needs_machine_approval")
 }
 
 /// Shows what a Tailscale call left Tailscale doing, and hands over the
@@ -725,13 +744,20 @@ fn tailscale_done(store: &mut Store, method: &str, result: Result<Value, control
             let t = v["tailscale"].clone();
             store.server.tailscale = Some(t.clone());
             let link = s(&t, "auth_url").to_string();
-            if s(&t, "state") == "needs_login" && method != "server.tailscale.disable" {
-                // Enabling a device that has never signed in also needs the link.
-                store.server.login_pending = true;
+            let state = s(&t, "state");
+            match method {
+                // Enabling a device that has never signed in also needs the
+                // link, which may come only once the device has started.
+                "server.tailscale.enable" => store.server.login_pending = matches!(state, "needs_login" | "starting"),
+                "server.tailscale.disable" => store.server.login_pending = false,
+                _ => {}
+            }
+            if !wants_sign_in(state) {
+                store.server.login_pending = false;
             }
             if store.server.login_pending && !link.is_empty() {
                 give_sign_in_link(store, &link);
-            } else if store.server.login_pending {
+            } else if store.server.login_pending && (method == "server.tailscale.login" || state == "needs_login") {
                 show_notice(store, "Tailscale is making a sign-in link. It opens when ready.");
             } else {
                 let name = s(&t["https"], "url");
@@ -905,12 +931,10 @@ fn reconnect(store: &mut Store, endpoint: Endpoint, host: Option<String>, cx: &m
             };
             smol::future::or(old, give_up).await;
         }
+        // The new connection reads the host list once it is up.
         this.update(cx, |s, cx| {
             s.connect(cx);
             s.notice = None;
-            if s.server.host.is_none() {
-                fetch_hosts(s, cx);
-            }
         })
         .ok();
     })
@@ -1019,8 +1043,13 @@ fn host_add(ws: &mut Workspace, address: Option<&str>, label: Option<&str>, cx: 
         );
         return Ok(Value::Null);
     };
-    if let Err(e) = Endpoint::candidates(address) {
-        return fail("bad_request", format!("{e:#}"));
+    match Endpoint::candidates(address) {
+        Err(e) => return fail("bad_request", format!("{e:#}")),
+        // The server refuses them: a socket path works only on its own machine.
+        Ok(c) if matches!(c.first(), Some(Endpoint::Unix(_))) => {
+            return fail("bad_request", "a host needs a network address, not a socket path");
+        }
+        Ok(_) => {}
     }
     let Some(label) = label else {
         ws.palette = Some(
@@ -1057,7 +1086,7 @@ fn host_add(ws: &mut Workspace, address: Option<&str>, label: Option<&str>, cx: 
 fn host_remove(ws: &mut Workspace, host: Option<&str>, cx: &mut Context<Workspace>) -> Outcome {
     let Some(query) = host.map(str::to_string) else {
         const TITLE: &str = "Remove Host";
-        let items = |store: &Store| {
+        let items = |store: &Store| -> Vec<Item> {
             store
                 .server
                 .hosts
@@ -1238,7 +1267,7 @@ mod tests {
         assert!(labels.contains(&"You are uid 1000"));
         assert!(labels.contains(&"/home/u/.config/rex/init.lua"));
         assert!(labels.contains(&"warning init.lua:3: unknown action"));
-        let me = all.iter().find(|r| r.label == "OpenRex 0.1.0").unwrap();
+        let me = all.iter().find(|r| r.section == "client" && r.label == "OpenRex 0.1.0").unwrap();
         assert_eq!(me.mark, "this client");
         assert_eq!(me.detail, "label desk, app on linux, uid 1000 over unix, 1 session, connected 2026-11-13T10:00:00Z, client:me");
         assert_eq!(all.iter().find(|r| r.label == "client:old").unwrap().mark, "lost");
