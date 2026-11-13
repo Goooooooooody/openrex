@@ -645,6 +645,7 @@ pub fn client_actions() -> Vec<ActionInfo> {
         a("client.notice.dismiss", "Dismiss Notice", "App", "dismiss notice error banner hide", "", None),
         a("client.config.copy_path", "Copy Config File Path", "App", "config configuration init.lua path copy", "", None),
         a("client.config.reload", "Reload Config", "App", "config configuration reload init.lua keybindings", "", None),
+        a("client.scripts.reload", "Reload OpenRex Scripts", "App", "lua scripts reload client openrex", "Loads ~/.config/openrex/scripts/*.lua again.", None),
         a("client.reconnect", "Reconnect", "App", "reconnect connection server retry", "Connects to the server again.", None),
         a("client.quit", "Quit OpenRex", "App", "quit exit close app", "The server keeps every session running.", None),
         a("client.close", "Close", "Window", "close pane tab", "Closes the focused pane, else the selected tab.", None),

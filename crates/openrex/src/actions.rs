@@ -172,6 +172,10 @@ impl Workspace {
                 self.copy_text(path.clone(), "Copied the config file path", cx);
                 Ok(json!({"path": path}))
             }
+            "client.scripts.reload" => {
+                self.store.update(cx, |s, cx| s.load_scripts(cx));
+                done()
+            }
             "client.config.reload" => {
                 self.store.update(cx, |s, cx| {
                     s.call("server.config_reload", json!({}), cx, |s, r, cx| match r {

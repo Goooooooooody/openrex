@@ -38,6 +38,10 @@ OpenRex is not made by or affiliated with Superlogical, the makers of Rex.
 - **A command palette** (Ctrl+Shift+P) with every action and its keys. It is
   also how you switch sessions, go to any session, tab, or pane, rename
   things, and type paths, with completion from the terminal's machine.
+- **OpenRex's own Lua scripts.** Files in `~/.config/openrex/scripts/*.lua`
+  load into the server for this client only (`client.set_script`), with the
+  same API as `init.lua`; **Reload OpenRex Scripts** loads them again, and
+  their problems show in **Rex Diagnostics**.
 - **Scriptable from outside.** Other clients and scripts can ask OpenRex to
   perform its actions: `rex -C <client> do pane.split direction=down`.
 - **Files**: drop files on a pane, or use **Upload Files…**, to send them to

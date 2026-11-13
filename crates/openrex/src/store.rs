@@ -72,6 +72,10 @@ pub struct Store {
     pub perform_queue: Vec<PerformRequest>,
     /// A short message for the status bar, such as "Copied pane ID".
     pub notice: Option<String>,
+    /// Problems the server found in OpenRex's own Lua scripts.
+    pub script_diagnostics: Vec<String>,
+    /// Whether scripts were loaded, so that removing them all unloads them.
+    scripts_loaded: bool,
     /// Hosts, Tailscale, and the server OpenRex started with.
     pub server: crate::server::ServerState,
     /// Every terminal's title and what its programs are doing.
@@ -112,6 +116,8 @@ impl Store {
             keymap: Keymap::defaults(),
             perform_queue: Vec::new(),
             notice: None,
+            script_diagnostics: Vec::new(),
+            scripts_loaded: false,
             server: Default::default(),
             activity: Default::default(),
             control: None,
@@ -167,9 +173,42 @@ impl Store {
             // A server with nothing running: start a first session.
             self.new_session(cx);
         }
-        self.fetch_keymap(cx);
+        self.load_scripts(cx);
         crate::server::on_connected(self, cx);
         cx.notify();
+    }
+
+    /// Loads this client's own Lua scripts, `~/.config/openrex/scripts/*.lua`
+    /// in name order, then reads the keymap they change. The scripts bind keys
+    /// and react to events like `init.lua` does, but only for OpenRex.
+    pub fn load_scripts(&mut self, cx: &mut Context<Self>) {
+        let scripts = read_scripts(&scripts_dir());
+        self.script_diagnostics.clear();
+        if scripts.is_empty() && !self.scripts_loaded {
+            self.fetch_keymap(cx);
+            return;
+        }
+        let count = scripts.len();
+        let payload = json!({"scripts": scripts});
+        self.call("client.set_script", payload, cx, move |this, result, cx| {
+            match result {
+                Ok(v) => {
+                    this.scripts_loaded = count > 0;
+                    this.script_diagnostics = v["diagnostics"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|d| {
+                            let source = d["source"].as_str().map(|s| format!("{s}: ")).unwrap_or_default();
+                            format!("{} {source}{}", d["severity"].as_str().unwrap_or("warning"), d["message"].as_str().unwrap_or(""))
+                        })
+                        .collect();
+                }
+                // A script that fails to load leaves the ones before it running.
+                Err(e) => this.error = Some(format!("OpenRex scripts: {}", e.message)),
+            }
+            this.fetch_keymap(cx);
+        });
     }
 
     /// Declares OpenRex's actions and default keys, and reads back the
@@ -193,6 +232,7 @@ impl Store {
         self.call("client.keymap", payload, cx, |this, result, cx| match result {
             Ok(v) => {
                 this.keymap = Keymap::from_result(&v);
+                this.keymap.diagnostics.extend(this.script_diagnostics.iter().cloned());
                 cx.notify();
             }
             Err(e) => this.error = Some(format!("client.keymap: {e}")),
@@ -225,6 +265,14 @@ impl Store {
             "keymap_changed" => {
                 if ev.payload["hash"].as_str() != Some(self.keymap.hash.as_str()) {
                     self.fetch_keymap(cx);
+                }
+            }
+            "client_call_requested" => {
+                // OpenRex never offers other servers to an action, so it can't
+                // make the call. Answer at once so the action doesn't wait.
+                if let Some(call_id) = ev.payload["call_id"].as_str() {
+                    let err = ("not_supported".to_string(), "OpenRex doesn't call other servers for actions".to_string());
+                    self.reply(call_id, Err(err));
                 }
             }
             "client_perform_requested" => {
@@ -679,4 +727,54 @@ fn notify_desktop(title: &str, body: &str) {
             .status()
             .ok();
     });
+}
+
+/// Where OpenRex's own Lua scripts live.
+pub fn scripts_dir() -> std::path::PathBuf {
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+        .unwrap_or_default();
+    config.join("openrex").join("scripts")
+}
+
+/// The `.lua` files of a directory in name order, as `client.set_script`
+/// takes them.
+pub fn read_scripts(dir: &std::path::Path) -> Vec<Value> {
+    let mut paths: Vec<_> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "lua") && p.is_file())
+        .collect();
+    paths.sort();
+    paths
+        .into_iter()
+        .filter_map(|p| {
+            let source = std::fs::read_to_string(&p).ok()?;
+            let name = p.file_name()?.to_string_lossy().into_owned();
+            Some(json!({"name": name, "source": source}))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod script_tests {
+    use super::*;
+
+    #[test]
+    fn reads_lua_scripts_in_name_order() {
+        let dir = std::env::temp_dir().join(format!("openrex-scripts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("b.lua"), "-- b").unwrap();
+        std::fs::write(dir.join("a.lua"), "-- a").unwrap();
+        std::fs::write(dir.join("notes.txt"), "not lua").unwrap();
+        let scripts = read_scripts(&dir);
+        std::fs::remove_dir_all(&dir).ok();
+        let names: Vec<&str> = scripts.iter().filter_map(|s| s["name"].as_str()).collect();
+        assert_eq!(names, ["a.lua", "b.lua"]);
+        assert_eq!(scripts[0]["source"], "-- a");
+        assert!(read_scripts(std::path::Path::new("/nonexistent/openrex")).is_empty());
+    }
 }
