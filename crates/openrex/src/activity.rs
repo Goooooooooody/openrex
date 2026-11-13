@@ -472,7 +472,7 @@ fn summarize(entries: impl IntoIterator<Item = Entry>) -> Option<Summary> {
 /// one program's message look like another's.
 pub fn sanitize(text: &str) -> String {
     text.chars()
-        .filter(|c| {
+        .filter(|&c| {
             !c.is_control()
                 && !matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{061C}' | '\u{FEFF}')
         })
@@ -589,7 +589,12 @@ pub(crate) fn perform(
     match action {
         "pane.view_activity" => {
             let arg = |k: &str| args.get(k).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
-            Some(match (arg("session"), arg("block")) {
+            let (mut session, block) = (arg("session"), arg("block"));
+            if let (None, Some(b)) = (&session, &block) {
+                // A block alone is enough: the tracker knows its session.
+                session = ws.store.read(cx).activity.get(b).map(|b| b.session_id.clone()).filter(|s| !s.is_empty());
+            }
+            Some(match (session, block) {
                 (Some(session), Some(block)) => go_to(ws, session, block, window, cx),
                 _ => {
                     open_palette(ws, cx);
@@ -611,13 +616,21 @@ pub(crate) fn perform(
     }
 }
 
-/// Shows a terminal: its session, then the terminal, which makes its tab
-/// the active one.
+/// Shows a terminal: focuses it, which makes its tab the active one, then
+/// shows its session.
+///
+/// The focus goes first, naming the session: a session shown for the first
+/// time is attached by a request sent after it, so the view the attach
+/// returns already has the terminal's tab active. Focusing after the attach
+/// could leave the old tab showing, as the store ignores a session's view
+/// changes until its attach returns.
 fn go_to(ws: &mut Workspace, session: String, block: String, window: &mut Window, cx: &mut Context<Workspace>) -> Outcome {
+    let payload = json!({"session_id": session, "block_id": block});
+    ws.store.update(cx, |s, cx| s.request("session.focus_block", payload, cx));
     if ws.store.read(cx).current.as_deref() != Some(session.as_str()) {
         ws.perform("session.select", &json!({"session": session}), Target::default(), window, cx)?;
     }
-    ws.perform("pane.focus_block", &json!({"block": block}), Target::default(), window, cx)
+    Ok(Value::Null)
 }
 
 fn open_palette(ws: &mut Workspace, cx: &mut Context<Workspace>) {
@@ -681,21 +694,17 @@ pub(crate) fn sync(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Wor
     if visible.is_empty() {
         return;
     }
-    let (changed, rang) = ws.store.update(cx, |s, _| {
-        let mut changed = false;
+    // No notify when something clears: this render, which draws every
+    // badge, reads the tracker after this.
+    let rang = ws.store.update(cx, |s, _| {
         let mut rang = Vec::new();
         for id in &visible {
-            let (c, r) = s.activity.see(id, now);
-            changed |= c;
-            if r {
+            if s.activity.see(id, now).1 {
                 rang.push(id.clone());
             }
         }
-        (changed, rang)
+        rang
     });
-    if changed {
-        ws.store.update(cx, |_, cx| cx.notify());
-    }
     if !rang.is_empty() {
         for id in rang {
             ws.activity.flash.insert(id, now + FLASH);
