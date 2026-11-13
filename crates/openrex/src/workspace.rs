@@ -2,7 +2,7 @@
 //! tabs, and the active window's panes.
 
 use gpui::{
-    App, Bounds, ClickEvent, ClipboardItem, Context, CursorStyle, Entity, FocusHandle, Hsla, InteractiveElement,
+    App, Bounds, ClickEvent, ClipboardItem, Context, CursorStyle, Entity, ExternalPaths, FocusHandle, Hsla, InteractiveElement,
     IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
     Render, SharedString, StatefulInteractiveElement, Styled, Window, canvas, div, hsla, px,
     relative, rgb,
@@ -547,7 +547,9 @@ impl Workspace {
                         .h(relative(r[3]))
                         .border_1()
                         .border_color(border)
-                        .child(pane.clone()),
+                        .child(pane.clone())
+                        .drag_over::<ExternalPaths>(move |s, _, _, _| s.border_color(t.accent))
+                        .on_drop(crate::transfer::drop_listener(block_id.clone(), cx)),
                 );
             }
         }
