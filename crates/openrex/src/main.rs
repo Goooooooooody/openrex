@@ -12,13 +12,15 @@ Usage: openrex [OPTIONS] [ENDPOINT]
 
 A Linux client for the Rex terminal multiplexer server.
 
-ENDPOINT is where the server listens: a Unix socket path or unix:// URL, or
-host:port for a server reached over TCP. It defaults to REX_SERVER, then to
+ENDPOINT is where the server listens: a Unix socket path or unix:// URL,
+host:port for a server reached over TCP, or https://host for one behind TLS,
+such as built-in Tailscale. It defaults to REX_SERVER, then to
 the local server's socket, $XDG_RUNTIME_DIR/rex/server.sock.
 
 Options:
   --font FAMILY     Terminal font (default: the system's monospace font)
   --font-size PX    Terminal font size in pixels (default: 14)
+  --label LABEL     Name this client, so `rex -C LABEL` can address it
   -h, --help        Show this help
   -V, --version     Show the version
 ";
@@ -44,6 +46,11 @@ fn parse_args() -> Result<Option<Args>> {
                 return Ok(None);
             }
             "--font" => font = Some(args.next().context("--font needs a font family")?),
+            "--label" => {
+                let label = args.next().unwrap_or_default();
+                let label = openrex::server::check_label(&label).map_err(anyhow::Error::msg)?;
+                openrex::server::set_client_label(label);
+            }
             "--font-size" => {
                 let value = args.next().context("--font-size needs a size in pixels")?;
                 font_size = value.parse().ok().filter(|s| (6.0..=72.0).contains(s)).with_context(|| {

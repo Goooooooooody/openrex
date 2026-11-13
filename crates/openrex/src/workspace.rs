@@ -688,6 +688,7 @@ impl Workspace {
             Status::Connecting => (rgb(0xe0af68), format!("connecting to {}", store.endpoint)),
             Status::Disconnected(_) => (rgb(0xf7768e), "disconnected".to_string()),
         };
+        let label = crate::server::connection_label(store, label);
         let mut keys_state = String::new();
         if let Some(mode) = self.modes.last() {
             keys_state = format!("mode: {mode}");
