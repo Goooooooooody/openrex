@@ -582,6 +582,7 @@ pub const DEFAULT_BINDINGS: &[(&str, &str, &str)] = &[
     ("ctrl+shift+enter", "pane.zoom", ""),
     ("ctrl+alt+enter", "pane.float", ""),
     ("ctrl+alt+m", "pane.minimize_floating", ""),
+    ("ctrl+alt+shift+enter", "pane.minimize_all_floating", ""),
     ("ctrl+alt+left", "pane.focus.left", ""),
     ("ctrl+alt+right", "pane.focus.right", ""),
     ("ctrl+alt+up", "pane.focus.up", ""),

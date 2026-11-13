@@ -56,8 +56,10 @@ pub struct Workspace {
     pub(crate) store: Entity<Store>,
     focus: FocusHandle,
     /// Where the pane area was last drawn.
-    area: Bounds<Pixels>,
+    pub(crate) area: Bounds<Pixels>,
     drag: Option<SplitDrag>,
+    /// A floating layer being moved or resized.
+    pub(crate) layer_drag: Option<crate::layers::LayerDrag>,
     confirm_destroy: Option<String>,
     /// The block that last had keyboard focus in an active window.
     reported_focus: Option<String>,
@@ -101,6 +103,7 @@ impl Workspace {
             focus: cx.focus_handle(),
             area: Bounds::default(),
             drag: None,
+            layer_drag: None,
             confirm_destroy: None,
             reported_focus: None,
             window_title: String::new(),
@@ -500,6 +503,7 @@ impl Workspace {
                 }))
                 .child("+"),
         )
+        .child(crate::layers::render_minimized(self, view, cx))
     }
 
     fn render_panes(&self, view: &SessionView, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -520,6 +524,9 @@ impl Workspace {
                 continue;
             }
             let Some(layout) = &layer.layout else { continue };
+            if layer.is_floating() && win.zoomed_block_id.is_none() {
+                continue; // Drawn over the dividers, below.
+            }
             let mut leaves = Vec::new();
             layout.leaves(&mut leaves);
             if let Some(zoomed) = &win.zoomed_block_id {
@@ -577,7 +584,7 @@ impl Workspace {
                 }),
             ));
         }
-        area
+        area.children(crate::layers::render_floating(self, win, window, cx))
     }
 
     fn render_palette(&self, cx: &mut Context<Self>) -> impl IntoElement {
