@@ -302,6 +302,25 @@ impl Mirror {
         }
     }
 
+    /// Selects everything, scrollback included.
+    pub fn select_all(&mut self) {
+        self.clear_selection();
+        let (cols, _) = self.size();
+        let total = self.term.total_rows().unwrap_or(0);
+        if total == 0 {
+            return;
+        }
+        let at = |x: u16, y: u32| Point::Screen(PointCoordinate { x, y });
+        let (Ok(start), Ok(end)) = (self.term.grid_ref(at(0, 0)), self.term.grid_ref(at(cols.saturating_sub(1), total as u32 - 1))) else {
+            return;
+        };
+        let selection = Selection::new(start, end, false);
+        if self.term.set_selection(Some(&selection)).is_ok() {
+            self.has_selection = true;
+            self.stale = true;
+        }
+    }
+
     pub fn clear_selection(&mut self) {
         self.anchor = None;
         if self.has_selection {

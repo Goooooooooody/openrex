@@ -35,6 +35,8 @@ pub struct Pane {
     pub session_id: String,
     pub block_id: String,
     pub title: String,
+    /// The directory the terminal's program last reported, as a path.
+    pub cwd: Option<String>,
     pub exited: Option<i64>,
     pub focus: FocusHandle,
     control: Control,
@@ -104,22 +106,27 @@ impl Pane {
                 }
             }
         });
-        // Titles arrive as events when they change. Ask for the current one.
+        // Titles and directories arrive as events when they change. Ask for
+        // the current ones.
         cx.spawn({
             let (control, session_id, block_id) = (control.clone(), session_id.clone(), block_id.clone());
             async move |this, cx| {
                 let title = control
                     .block_call("com.superlogical.terminal.title", &session_id, &block_id, json!({}))
                     .await;
-                if let Some(title) = title.ok().and_then(|v| v["title"].as_str().map(str::to_string)) {
-                    this.update(cx, |pane, cx| {
+                let pwd = control.block_call("com.superlogical.terminal.pwd", &session_id, &block_id, json!({})).await;
+                this.update(cx, |pane, cx| {
+                    if let Some(title) = title.ok().and_then(|v| v["title"].as_str().map(str::to_string)) {
                         if pane.title.is_empty() {
                             pane.title = title;
-                            cx.notify();
                         }
-                    })
-                    .ok();
-                }
+                    }
+                    if let Some(pwd) = pwd.ok().and_then(|v| v["pwd"].as_str().map(path_of_pwd)) {
+                        pane.cwd.get_or_insert(pwd);
+                    }
+                    cx.notify();
+                })
+                .ok();
             }
         })
         .detach();
@@ -127,6 +134,7 @@ impl Pane {
             session_id,
             block_id,
             title: String::new(),
+            cwd: None,
             exited: None,
             focus: cx.focus_handle(),
             control,
@@ -201,6 +209,21 @@ impl Pane {
             }
             None => false,
         }
+    }
+
+    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        if let Some(mirror) = &mut self.mirror {
+            mirror.select_all();
+            if let Some(text) = mirror.selection_text() {
+                cx.write_to_primary(ClipboardItem::new_string(text));
+            }
+            cx.notify();
+        }
+    }
+
+    pub fn set_font_size(&mut self, size: f32, cx: &mut Context<Self>) {
+        self.settings.font_size = size;
+        cx.notify();
     }
 
     pub fn scroll_lines(&mut self, lines: isize, cx: &mut Context<Self>) {
@@ -705,5 +728,43 @@ impl Render for Pane {
                 )
                 .size_full(),
             )
+    }
+}
+
+/// A reported directory as a path: OSC 7 sends a `file://host/path` URL.
+pub fn path_of_pwd(pwd: &str) -> String {
+    let Some(rest) = pwd.strip_prefix("file://") else { return pwd.to_string() };
+    let path = rest.find('/').map(|i| &rest[i..]).unwrap_or("/");
+    percent_decode(path)
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok();
+            if let Some(b) = hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_reported_directories() {
+        assert_eq!(path_of_pwd("file://host/home/me/my%20dir"), "/home/me/my dir");
+        assert_eq!(path_of_pwd("/plain/path"), "/plain/path");
+        assert_eq!(path_of_pwd("file:///tmp"), "/tmp");
     }
 }

@@ -10,6 +10,7 @@ use openrex_proto::types::{SessionView, Window};
 use openrex_proto::Endpoint;
 use serde_json::{Value, json};
 
+use crate::keymap::{self, Keymap};
 use crate::pane::Pane;
 
 pub const SHELL_FLAVOR: &str = "com.superlogical.terminal.shell";
@@ -24,6 +25,18 @@ pub struct Settings {
 pub struct SessionInfo {
     pub id: String,
     pub label: String,
+}
+
+/// Another client's request, through `client.perform`, for OpenRex to
+/// perform one of its actions.
+#[derive(Clone, Debug)]
+pub struct PerformRequest {
+    pub call_id: String,
+    pub action: String,
+    pub args: Value,
+    pub origin: String,
+    pub session_id: Option<String>,
+    pub block_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -52,6 +65,13 @@ pub struct Store {
     /// Text a program copied, waiting for the window to put it on the
     /// clipboard.
     pub pending_clipboard: Option<String>,
+    /// The key bindings the server resolved for this client.
+    pub keymap: Keymap,
+    /// Requests from other clients to perform one of OpenRex's actions, for
+    /// the window to perform and answer.
+    pub perform_queue: Vec<PerformRequest>,
+    /// A short message for the status bar, such as "Copied pane ID".
+    pub notice: Option<String>,
     control: Option<Control>,
     fetching: HashSet<String>,
     refetch: HashSet<String>,
@@ -61,6 +81,14 @@ pub struct Store {
 
 fn shell_layout() -> Value {
     json!({"block": {"flavor": SHELL_FLAVOR}})
+}
+
+/// A layout of one shell, started in `cwd` when given.
+pub fn shell_layout_in(cwd: Option<String>) -> Value {
+    match cwd.filter(|c| !c.is_empty()) {
+        Some(cwd) => json!({"block": {"flavor": SHELL_FLAVOR, "options": {"cwd": cwd}}}),
+        None => shell_layout(),
+    }
 }
 
 impl Store {
@@ -77,6 +105,9 @@ impl Store {
             error: None,
             focus_request: None,
             pending_clipboard: None,
+            keymap: Keymap::defaults(),
+            perform_queue: Vec::new(),
+            notice: None,
             control: None,
             fetching: HashSet::new(),
             refetch: HashSet::new(),
@@ -128,7 +159,35 @@ impl Store {
             // A server with nothing running: start a first session.
             self.new_session(cx);
         }
+        self.fetch_keymap(cx);
         cx.notify();
+    }
+
+    /// Declares OpenRex's actions and default keys, and reads back the
+    /// bindings the server resolved with the configuration file.
+    pub fn fetch_keymap(&mut self, cx: &mut Context<Self>) {
+        let bindings: Vec<Value> = keymap::DEFAULT_BINDINGS
+            .iter()
+            .map(|(keys, action, args)| {
+                let mut b = json!({"keys": keys.split('>').collect::<Vec<_>>(), "action": action});
+                if !args.is_empty() {
+                    b["args"] = serde_json::from_str(args).unwrap_or(Value::Null);
+                }
+                b
+            })
+            .collect();
+        let actions: Vec<Value> = keymap::client_actions().iter().map(|a| a.to_json()).collect();
+        let payload = json!({
+            "actions": actions,
+            "defaults": [{"name": "default", "bindings": bindings}],
+        });
+        self.call("client.keymap", payload, cx, |this, result, cx| match result {
+            Ok(v) => {
+                this.keymap = Keymap::from_result(&v);
+                cx.notify();
+            }
+            Err(e) => this.error = Some(format!("client.keymap: {e}")),
+        });
     }
 
     fn handle_event(&mut self, ev: ControlEvent, cx: &mut Context<Self>) {
@@ -153,6 +212,24 @@ impl Store {
                 }
             }
             "session_moved" => self.refresh_sessions(cx),
+            "keymap_changed" => {
+                if ev.payload["hash"].as_str() != Some(self.keymap.hash.as_str()) {
+                    self.fetch_keymap(cx);
+                }
+            }
+            "client_perform_requested" => {
+                let p = &ev.payload;
+                if let (Some(call_id), Some(action)) = (p["call_id"].as_str(), p["action"].as_str()) {
+                    self.perform_queue.push(PerformRequest {
+                        call_id: call_id.to_string(),
+                        action: action.to_string(),
+                        args: p.get("args").cloned().unwrap_or(Value::Null),
+                        origin: p["origin"].as_str().unwrap_or("api").to_string(),
+                        session_id: p["session_id"].as_str().map(str::to_string),
+                        block_id: p["block_id"].as_str().map(str::to_string),
+                    });
+                }
+            }
             "session_event" => {
                 let Some(session_id) = ev.payload["session_id"].as_str() else { return };
                 let event = &ev.payload["event"];
@@ -195,6 +272,12 @@ impl Store {
                                 pane.title = title;
                                 cx.notify();
                             });
+                        }
+                    }
+                    "pwd_changed" => {
+                        if let (Some(pwd), Some(pane)) = (payload["pwd"].as_str(), self.panes.get(block_id)) {
+                            let path = crate::pane::path_of_pwd(pwd);
+                            pane.update(cx, |pane, _| pane.cwd = Some(path));
                         }
                     }
                     "clipboard_written" => {
@@ -349,7 +432,7 @@ impl Store {
     }
 
     /// Calls a method for its effect. A failure shows in the status bar.
-    fn request(&mut self, method: &'static str, payload: Value, cx: &mut Context<Self>) {
+    pub fn request(&mut self, method: &'static str, payload: Value, cx: &mut Context<Self>) {
         let Some(control) = self.control.clone() else { return };
         cx.spawn(async move |this, cx| {
             let result = control.call(method, payload).await;
@@ -360,6 +443,57 @@ impl Store {
             .ok();
         })
         .detach();
+    }
+
+    /// Calls a method and hands its result to `done` on the store.
+    pub fn call(
+        &mut self,
+        method: &'static str,
+        payload: Value,
+        cx: &mut Context<Self>,
+        done: impl FnOnce(&mut Store, Result<Value, control::RpcError>, &mut Context<Store>) + 'static,
+    ) {
+        let Some(control) = self.control.clone() else { return };
+        cx.spawn(async move |this, cx| {
+            let result = control.call(method, payload).await;
+            this.update(cx, |this, cx| {
+                done(this, result, cx);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Calls a method for its effect, in the current session. A failure shows
+    /// in the status bar.
+    pub fn session_request(&mut self, method: &'static str, mut payload: Value, cx: &mut Context<Self>) {
+        let Some(id) = self.current.clone() else { return };
+        payload["session_id"] = json!(id);
+        self.request(method, payload, cx);
+    }
+
+    pub fn control(&self) -> Option<Control> {
+        self.control.clone()
+    }
+
+    /// Answers another client's `client.perform` request.
+    pub fn reply(&self, call_id: &str, result: Result<Value, (String, String)>) {
+        let Some(control) = &self.control else { return };
+        let payload = match result {
+            Ok(v) => json!({"call_id": call_id, "result": v}),
+            Err((code, message)) => json!({"call_id": call_id, "error": {"code": code, "message": message}}),
+        };
+        control.send_nowait("client.reply", payload);
+    }
+
+    /// Asks for the session view again, as after a missed change.
+    pub fn refresh_all(&mut self, cx: &mut Context<Self>) {
+        self.refresh_sessions(cx);
+        let ids: Vec<String> = self.views.keys().cloned().collect();
+        for id in ids {
+            self.fetch_view(id, cx);
+        }
     }
 
     pub fn take_focus_request(&mut self) -> Option<String> {
@@ -410,15 +544,27 @@ impl Store {
     /// Splits the focused pane. `direction` is `horizontal` for side by side
     /// or `vertical` for one above the other.
     pub fn split(&mut self, direction: &str, cx: &mut Context<Self>) {
+        self.split_side(direction, "after", None, cx);
+    }
+
+    /// Splits the focused pane, putting the new one `before` (left or above)
+    /// or `after` it, starting in `cwd` if given.
+    pub fn split_side(&mut self, direction: &str, side: &str, cwd: Option<String>, cx: &mut Context<Self>) {
         let Some(id) = self.current.clone() else { return };
         let payload = json!({
             "session_id": id,
             "direction": direction,
-            "side": "after",
-            "layout": shell_layout(),
+            "side": side,
+            "layout": shell_layout_in(cwd),
             "focus": true,
         });
         self.request("session.new_split", payload, cx);
+    }
+
+    /// Opens a new tab whose shell starts in `cwd`.
+    pub fn new_window_in(&mut self, cwd: Option<String>, cx: &mut Context<Self>) {
+        let Some(id) = self.current.clone() else { return self.new_session(cx) };
+        self.request("session.new_window", json!({"session_id": id, "layout": shell_layout_in(cwd)}), cx);
     }
 
     pub fn close_focused_pane(&mut self, cx: &mut Context<Self>) {

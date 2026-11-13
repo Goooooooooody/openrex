@@ -3,37 +3,17 @@
 
 use gpui::{
     App, Bounds, ClickEvent, ClipboardItem, Context, CursorStyle, Entity, FocusHandle, Hsla, InteractiveElement,
-    IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
-    Render, SharedString, StatefulInteractiveElement, Styled, Window, actions, canvas, div, px,
+    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
+    Render, SharedString, StatefulInteractiveElement, Styled, Window, canvas, div, hsla, px,
     relative, rgb,
 };
 use openrex_proto::types::{LayoutNode, SessionView, Window as RexWindow};
+use serde_json::Value;
 
+use crate::actions::Target;
+use crate::keymap::{self, ActionInfo, Press, Resolution};
+use crate::palette::{self, Palette};
 use crate::store::{Status, Store, active_window};
-
-actions!(
-    openrex,
-    [
-        NewSession,
-        NewTab,
-        SplitRight,
-        SplitDown,
-        ClosePane,
-        NextTab,
-        PreviousTab,
-        FocusLeft,
-        FocusRight,
-        FocusUp,
-        FocusDown,
-        ToggleZoom,
-        Copy,
-        Paste,
-        ScrollPageUp,
-        ScrollPageDown,
-        Reconnect,
-        Quit,
-    ]
-);
 
 pub const KEY_CONTEXT: &str = "OpenRex";
 
@@ -73,7 +53,7 @@ struct SplitDrag {
 }
 
 pub struct Workspace {
-    store: Entity<Store>,
+    pub(crate) store: Entity<Store>,
     focus: FocusHandle,
     /// Where the pane area was last drawn.
     area: Bounds<Pixels>,
@@ -82,6 +62,17 @@ pub struct Workspace {
     /// The block that last had keyboard focus in an active window.
     reported_focus: Option<String>,
     window_title: String,
+    pub(crate) palette: Option<Palette>,
+    /// The key modes entered with `client.mode.enter`, innermost last.
+    pub(crate) modes: Vec<String>,
+    /// The keys of an unfinished key sequence.
+    key_prefix: Vec<Press>,
+    pub(crate) client_actions: Vec<ActionInfo>,
+    /// Actions a configuration file action asked this client to perform.
+    pub(crate) queued_actions: Vec<(String, Value)>,
+    pub(crate) sidebar_visible: bool,
+    pub(crate) font_size: f32,
+    pub(crate) base_font_size: f32,
 }
 
 impl Workspace {
@@ -104,6 +95,7 @@ impl Workspace {
                 Err(e) => log::error!("OPENREX_REPLAY: {e}"),
             }
         }
+        let font_size = store.read(cx).settings.font_size;
         Workspace {
             store,
             focus: cx.focus_handle(),
@@ -112,7 +104,165 @@ impl Workspace {
             confirm_destroy: None,
             reported_focus: None,
             window_title: String::new(),
+            palette: None,
+            modes: Vec::new(),
+            key_prefix: Vec::new(),
+            client_actions: keymap::client_actions(),
+            queued_actions: Vec::new(),
+            sidebar_visible: true,
+            font_size,
+            base_font_size: font_size,
         }
+    }
+
+    /// Performs what other clients asked for and what configuration file
+    /// actions queued.
+    fn drain_requests(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let requests = self.store.update(cx, |s, _| std::mem::take(&mut s.perform_queue));
+        for req in requests {
+            let target = Target {
+                session_id: req.session_id.clone(),
+                block_id: req.block_id.clone(),
+                origin: req.origin.clone(),
+                ..Default::default()
+            };
+            let outcome = if self.client_actions.iter().any(|a| a.name == req.action) {
+                self.perform(&req.action, &req.args, target, window, cx)
+            } else {
+                Err(("not_supported".to_string(), format!("OpenRex has no action named {}", req.action)))
+            };
+            self.store.read(cx).reply(&req.call_id, outcome);
+        }
+        for (action, args) in std::mem::take(&mut self.queued_actions) {
+            let target = Target { origin: "script".into(), ..Default::default() };
+            let outcome = self.perform(&action, &args, target, window, cx);
+            self.report(outcome, &action, cx);
+        }
+    }
+
+    /// Shows an action's failure in the status bar.
+    fn report(&mut self, outcome: crate::actions::Outcome, action: &str, cx: &mut Context<Self>) {
+        if let Err((_, message)) = outcome {
+            let action = action.to_string();
+            self.store.update(cx, |s, cx| {
+                s.error = Some(format!("{action}: {message}"));
+                cx.notify();
+            });
+        }
+    }
+
+    /// Hook for actions that live in their own modules.
+    pub(crate) fn perform_extra(
+        &mut self,
+        _action: &str,
+        _args: &Value,
+        _target: &Target,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<crate::actions::Outcome> {
+        None
+    }
+
+    /// Every key press passes here first: the palette takes it while open,
+    /// then the keymap, and only an unbound key reaches the terminal.
+    fn on_key_capture(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.palette.is_some() {
+            cx.stop_propagation();
+            self.palette_key(ev, window, cx);
+            cx.notify();
+            return;
+        }
+        let Some(press) = keymap::press_of(&ev.keystroke) else { return };
+        let resolution = {
+            let store = self.store.read(cx);
+            store.keymap.resolve(&self.modes, &self.key_prefix, &press, |a| self.can_perform(a, cx))
+        };
+        match resolution {
+            Resolution::Run(binding) => {
+                cx.stop_propagation();
+                let prefix: Vec<String> = self.key_prefix.drain(..).map(|p| p.spelled()).collect();
+                let target = Target {
+                    origin: "key".into(),
+                    key: crate::keys::rex_key(&ev.keystroke, ev.is_held),
+                    prefix,
+                    ..Default::default()
+                };
+                let outcome = self.perform(&binding.action, &binding.args, target, window, cx);
+                self.report(outcome, &binding.action, cx);
+            }
+            Resolution::Pending => {
+                cx.stop_propagation();
+                self.key_prefix.push(press);
+            }
+            Resolution::Swallow => {
+                cx.stop_propagation();
+                self.key_prefix.clear();
+            }
+            Resolution::Unbound => self.key_prefix.clear(),
+        }
+        cx.notify();
+    }
+
+    fn palette_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let ks = &ev.keystroke;
+        let m = &ks.modifiers;
+        let Some(p) = &mut self.palette else { return };
+        let before = p.query.clone();
+        match ks.key.as_str() {
+            "escape" => self.palette = None,
+            "enter" => {
+                if let Some((action, args)) = p.submit() {
+                    self.palette = None;
+                    let target = Target { origin: "palette".into(), ..Default::default() };
+                    let outcome = self.perform(&action, &args, target, window, cx);
+                    self.report(outcome, &action, cx);
+                }
+            }
+            "up" => p.move_selection(-1),
+            "down" => p.move_selection(1),
+            "pageup" => p.move_selection(-10),
+            "pagedown" => p.move_selection(10),
+            "tab" => p.complete(),
+            "backspace" if m.control || m.alt => {
+                let mut q = p.query.clone();
+                palette::delete_word(&mut q);
+                p.set_query(q);
+            }
+            "backspace" => {
+                let mut q = p.query.clone();
+                q.pop();
+                p.set_query(q);
+            }
+            "p" if m.control => p.move_selection(-1),
+            "n" if m.control => p.move_selection(1),
+            "u" if m.control => p.set_query(String::new()),
+            "w" if m.control => {
+                let mut q = p.query.clone();
+                palette::delete_word(&mut q);
+                p.set_query(q);
+            }
+            "v" if m.control => {
+                if let Some(text) = cx.read_from_clipboard().and_then(|i| i.text()) {
+                    let line = text.lines().next().unwrap_or("").to_string();
+                    let q = format!("{}{line}", p.query);
+                    p.set_query(q);
+                }
+            }
+            _ if !m.control && !m.platform => {
+                if let Some(text) = ks.key_char.as_ref().filter(|t| !t.chars().any(char::is_control)) {
+                    let q = format!("{}{text}", p.query);
+                    p.set_query(q);
+                }
+            }
+            _ => {}
+        }
+        if self.palette.as_ref().is_some_and(|p| p.query != before) {
+            self.refresh_suggestions(cx);
+        }
+    }
+
+    pub(crate) fn window_title(&self, win: &RexWindow, cx: &App) -> String {
+        tab_title(win, self.store.read(cx), cx)
     }
 
     /// Puts text a program copied on the clipboard. A Wayland compositor
@@ -418,6 +568,106 @@ impl Workspace {
         area
     }
 
+    fn render_palette(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        const ROWS: usize = 14;
+        let t = theme();
+        let Some(p) = &self.palette else { return div().id("palette-backdrop") };
+        let visible = p.visible();
+        let selected = p.selected.min(visible.len().saturating_sub(1));
+        let first = selected.saturating_sub(ROWS - 1);
+        let mut list = div().flex().flex_col().py_1();
+        for (i, item) in visible.iter().enumerate().skip(first).take(ROWS) {
+            let chosen = i == selected;
+            list = list.child(
+                div()
+                    .id(("palette-item", i))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_3()
+                    .py(px(3.0))
+                    .cursor_pointer()
+                    .when_active(chosen, rgb(0x2e3250).into())
+                    .hover(|s| s.bg(rgb(0x24263a)))
+                    .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                        let Some(p) = &mut this.palette else { return };
+                        p.selected = i;
+                        if let Some((action, args)) = p.submit() {
+                            this.palette = None;
+                            let target = Target { origin: "palette".into(), ..Default::default() };
+                            let outcome = this.perform(&action, &args, target, window, cx);
+                            this.report(outcome, &action, cx);
+                        }
+                        cx.notify();
+                    }))
+                    .child(div().flex_shrink_0().text_color(if chosen { t.text } else { rgb(0xa9b1d6).into() }).child(SharedString::from(item.label.clone())))
+                    .child(div().flex_1().min_w_0().truncate().text_color(t.dim).text_size(px(11.0)).child(SharedString::from(item.detail.clone())))
+                    .child(div().flex_shrink_0().text_color(t.dim).text_size(px(11.0)).child(SharedString::from(item.hint.clone()))),
+            );
+        }
+        if visible.is_empty() && !p.empty.is_empty() {
+            list = list.child(div().px_3().py_1().text_color(t.dim).child(SharedString::from(p.empty.clone())));
+        }
+        let (query, color) = if p.query.is_empty() {
+            (p.placeholder.clone(), t.dim)
+        } else {
+            (p.query.clone(), t.text)
+        };
+        let count = if p.is_input() || visible.len() <= ROWS { String::new() } else { format!("{} of {}", selected + 1, visible.len()) };
+        div()
+            .id("palette-backdrop")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .flex()
+            .justify_center()
+            .pt(px(70.0))
+            .bg(hsla(0.0, 0.0, 0.0, 0.35))
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.palette = None;
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .id("palette")
+                    .w(px(640.0))
+                    .max_h(px(520.0))
+                    .flex()
+                    .flex_col()
+                    .overflow_hidden()
+                    .bg(t.panel)
+                    .border_1()
+                    .border_color(t.accent)
+                    .rounded_md()
+                    .shadow_lg()
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .px_3()
+                            .pt_2()
+                            .text_size(px(11.0))
+                            .text_color(t.dim)
+                            .child(SharedString::from(p.title.clone()))
+                            .child(SharedString::from(count)),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .px_3()
+                            .py_2()
+                            .border_b_1()
+                            .border_color(t.border)
+                            .text_color(color)
+                            .child(SharedString::from(query))
+                            .child(div().w(px(2.0)).h(px(16.0)).ml(px(1.0)).bg(t.accent)),
+                    )
+                    .child(list),
+            )
+    }
+
     fn render_status(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme();
         let store = self.store.read(cx);
@@ -426,9 +676,18 @@ impl Workspace {
             Status::Connecting => (rgb(0xe0af68), format!("connecting to {}", store.endpoint)),
             Status::Disconnected(_) => (rgb(0xf7768e), "disconnected".to_string()),
         };
-        let right = match &store.error {
-            Some(e) => div().text_color(t.danger).child(SharedString::from(e.clone())),
-            None => {
+        let mut keys_state = String::new();
+        if let Some(mode) = self.modes.last() {
+            keys_state = format!("mode: {mode}");
+        }
+        if !self.key_prefix.is_empty() {
+            let typed: Vec<String> = self.key_prefix.iter().map(|p| p.spelled()).collect();
+            keys_state = format!("{keys_state}  {} …", typed.join(" ")).trim().to_string();
+        }
+        let right = match (&store.error, &store.notice) {
+            (Some(e), _) => div().text_color(t.danger).child(SharedString::from(e.clone())),
+            (None, Some(n)) => div().text_color(t.accent).child(SharedString::from(n.clone())),
+            (None, None) => {
                 let size = store
                     .focused_pane()
                     .and_then(|p| p.read(cx).grid_size())
@@ -455,11 +714,23 @@ impl Workspace {
                     .gap_2()
                     .text_color(t.dim)
                     .child(div().size(px(7.0)).rounded_full().bg(dot))
-                    .child(SharedString::from(label)),
+                    .child(SharedString::from(label))
+                    .when_some_el((!keys_state.is_empty()).then(|| div().text_color(t.accent).child(SharedString::from(keys_state)))),
             )
             .child(right)
     }
 }
+
+/// Adds a child only when there is one.
+trait WhenSomeEl: ParentElement + Sized {
+    fn when_some_el(self, child: Option<impl IntoElement>) -> Self {
+        match child {
+            Some(c) => self.child(c),
+            None => self,
+        }
+    }
+}
+impl<T: ParentElement> WhenSomeEl for T {}
 
 /// Styling shared by the selected row of a list.
 trait WhenActive: Styled + Sized {
@@ -511,6 +782,7 @@ fn collect_dividers(node: &LayoutNode, out: &mut Vec<SplitDrag>) {
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.drain_requests(window, cx);
         self.sync_focus(window, cx);
         let t = theme();
         let store = self.store.read(cx);
@@ -572,48 +844,17 @@ impl Render for Workspace {
             .text_size(px(13.0))
             .on_mouse_move(cx.listener(Self::on_drag_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_drag_end))
-            .on_action(cx.listener(|this, _: &NewSession, _, cx| this.with_store(cx, |s, cx| s.new_session(cx))))
-            .on_action(cx.listener(|this, _: &NewTab, _, cx| this.with_store(cx, |s, cx| s.new_window(cx))))
-            .on_action(cx.listener(|this, _: &SplitRight, _, cx| this.with_store(cx, |s, cx| s.split("horizontal", cx))))
-            .on_action(cx.listener(|this, _: &SplitDown, _, cx| this.with_store(cx, |s, cx| s.split("vertical", cx))))
-            .on_action(cx.listener(|this, _: &ClosePane, _, cx| this.with_store(cx, |s, cx| s.close_focused_pane(cx))))
-            .on_action(cx.listener(|this, _: &NextTab, _, cx| this.with_store(cx, |s, cx| s.cycle_window(true, cx))))
-            .on_action(cx.listener(|this, _: &PreviousTab, _, cx| this.with_store(cx, |s, cx| s.cycle_window(false, cx))))
-            .on_action(cx.listener(|this, _: &FocusLeft, _, cx| this.with_store(cx, |s, cx| s.focus_direction("left", cx))))
-            .on_action(cx.listener(|this, _: &FocusRight, _, cx| this.with_store(cx, |s, cx| s.focus_direction("right", cx))))
-            .on_action(cx.listener(|this, _: &FocusUp, _, cx| this.with_store(cx, |s, cx| s.focus_direction("up", cx))))
-            .on_action(cx.listener(|this, _: &FocusDown, _, cx| this.with_store(cx, |s, cx| s.focus_direction("down", cx))))
-            .on_action(cx.listener(|this, _: &ToggleZoom, _, cx| this.with_store(cx, |s, cx| s.toggle_zoom(cx))))
-            .on_action(cx.listener(|this, _: &Reconnect, _, cx| this.with_store(cx, |s, cx| s.connect(cx))))
-            .on_action(cx.listener(|this, _: &Copy, _, cx| {
-                if let Some(pane) = this.store.read(cx).focused_pane() {
-                    pane.update(cx, |pane, cx| pane.copy_selection(cx));
-                }
-            }))
-            .on_action(cx.listener(|this, _: &Paste, _, cx| {
-                let text = cx.read_from_clipboard().and_then(|item| item.text());
-                if let (Some(text), Some(pane)) = (text, this.store.read(cx).focused_pane()) {
-                    pane.update(cx, |pane, _| pane.paste(text));
-                }
-            }))
-            .on_action(cx.listener(|this, _: &ScrollPageUp, _, cx| {
-                if let Some(pane) = this.store.read(cx).focused_pane() {
-                    pane.update(cx, |pane, cx| {
-                        let page = pane.grid_size().map_or(10, |(_, rows)| rows as isize - 1);
-                        pane.scroll_lines(-page, cx);
-                    });
-                }
-            }))
-            .on_action(cx.listener(|this, _: &ScrollPageDown, _, cx| {
-                if let Some(pane) = this.store.read(cx).focused_pane() {
-                    pane.update(cx, |pane, cx| {
-                        let page = pane.grid_size().map_or(10, |(_, rows)| rows as isize - 1);
-                        pane.scroll_lines(page, cx);
-                    });
-                }
-            }))
-            .child(div().flex().flex_1().overflow_hidden().child(self.render_sidebar(cx)).child(main))
+            .capture_key_down(cx.listener(Self::on_key_capture))
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .overflow_hidden()
+                    .when_some_el(self.sidebar_visible.then(|| self.render_sidebar(cx)))
+                    .child(main),
+            )
             .child(self.render_status(cx))
+            .when_some_el(self.palette.is_some().then(|| self.render_palette(cx)))
     }
 }
 

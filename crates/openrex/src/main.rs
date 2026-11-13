@@ -1,14 +1,11 @@
 //! OpenRex: a Linux client for the Rex terminal multiplexer server.
 
 use anyhow::{Context as _, Result, bail};
-use gpui::{
-    App, AppContext, Application, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions,
-    px, size,
-};
+use gpui::{App, AppContext, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 use openrex_proto::Endpoint;
 
 use openrex::store::{Settings, Store};
-use openrex::workspace::{self as ws, KEY_CONTEXT, Workspace};
+use openrex::workspace::Workspace;
 
 const USAGE: &str = "\
 Usage: openrex [OPTIONS] [ENDPOINT]
@@ -79,32 +76,6 @@ fn system_monospace() -> String {
         .unwrap_or_else(|| "monospace".to_string())
 }
 
-fn bind_keys(cx: &mut App) {
-    let ctx = Some(KEY_CONTEXT);
-    cx.bind_keys([
-        KeyBinding::new("ctrl-shift-n", ws::NewSession, ctx),
-        KeyBinding::new("ctrl-shift-t", ws::NewTab, ctx),
-        KeyBinding::new("ctrl-shift-d", ws::SplitRight, ctx),
-        KeyBinding::new("ctrl-shift-e", ws::SplitDown, ctx),
-        KeyBinding::new("ctrl-shift-w", ws::ClosePane, ctx),
-        KeyBinding::new("ctrl-tab", ws::NextTab, ctx),
-        KeyBinding::new("ctrl-shift-tab", ws::PreviousTab, ctx),
-        KeyBinding::new("ctrl-pagedown", ws::NextTab, ctx),
-        KeyBinding::new("ctrl-pageup", ws::PreviousTab, ctx),
-        KeyBinding::new("ctrl-alt-left", ws::FocusLeft, ctx),
-        KeyBinding::new("ctrl-alt-right", ws::FocusRight, ctx),
-        KeyBinding::new("ctrl-alt-up", ws::FocusUp, ctx),
-        KeyBinding::new("ctrl-alt-down", ws::FocusDown, ctx),
-        KeyBinding::new("ctrl-shift-enter", ws::ToggleZoom, ctx),
-        KeyBinding::new("ctrl-shift-c", ws::Copy, ctx),
-        KeyBinding::new("ctrl-shift-v", ws::Paste, ctx),
-        KeyBinding::new("shift-pageup", ws::ScrollPageUp, ctx),
-        KeyBinding::new("shift-pagedown", ws::ScrollPageDown, ctx),
-        KeyBinding::new("ctrl-shift-r", ws::Reconnect, ctx),
-        KeyBinding::new("ctrl-shift-q", ws::Quit, ctx),
-    ]);
-}
-
 fn main() {
     let args = match parse_args() {
         Ok(Some(args)) => args,
@@ -117,8 +88,6 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
     Application::new().run(move |cx: &mut App| {
-        bind_keys(cx);
-        cx.on_action(|_: &ws::Quit, cx| cx.quit());
         cx.on_window_closed(|cx| {
             if cx.windows().is_empty() {
                 cx.quit();
