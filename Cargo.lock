@@ -2056,6 +2056,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "futures-rustls"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f2f12607f92c69b12ed746fabf9ca4f5c482cba46679c1a75b874ed7c26adb"
+dependencies = [
+ "futures-io",
+ "rustls",
+ "rustls-pki-types",
+]
+
+[[package]]
 name = "futures-sink"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3907,7 +3918,9 @@ dependencies = [
  "async-tungstenite",
  "base64 0.23.1",
  "futures",
+ "futures-rustls",
  "log",
+ "rustls-native-certs",
  "serde",
  "serde_json",
  "smol",

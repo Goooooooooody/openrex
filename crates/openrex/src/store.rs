@@ -72,11 +72,13 @@ pub struct Store {
     pub perform_queue: Vec<PerformRequest>,
     /// A short message for the status bar, such as "Copied pane ID".
     pub notice: Option<String>,
+    /// Hosts, Tailscale, and the server OpenRex started with.
+    pub server: crate::server::ServerState,
     control: Option<Control>,
     fetching: HashSet<String>,
     refetch: HashSet<String>,
     attaching: HashSet<String>,
-    connection: Option<Task<()>>,
+    pub(crate) connection: Option<Task<()>>,
 }
 
 fn shell_layout() -> Value {
@@ -108,12 +110,14 @@ impl Store {
             keymap: Keymap::defaults(),
             perform_queue: Vec::new(),
             notice: None,
+            server: Default::default(),
             control: None,
             fetching: HashSet::new(),
             refetch: HashSet::new(),
             attaching: HashSet::new(),
             connection: None,
         };
+        crate::server::close_on_quit(cx);
         store.connect(cx);
         store
     }
@@ -160,6 +164,7 @@ impl Store {
             self.new_session(cx);
         }
         self.fetch_keymap(cx);
+        crate::server::on_connected(self, cx);
         cx.notify();
     }
 
@@ -212,6 +217,7 @@ impl Store {
                 }
             }
             "session_moved" => self.refresh_sessions(cx),
+            "hosts_changed" | "tailscale_status_changed" => crate::server::on_event(self, &ev.name, &ev.payload, cx),
             "keymap_changed" => {
                 if ev.payload["hash"].as_str() != Some(self.keymap.hash.as_str()) {
                     self.fetch_keymap(cx);
@@ -617,6 +623,7 @@ async fn run(endpoint: Endpoint, this: WeakEntity<Store>, cx: &mut AsyncApp) -> 
     let hello = Hello {
         name: "OpenRex".into(),
         version: env!("CARGO_PKG_VERSION").into(),
+        label: crate::server::client_label(),
         ..Default::default()
     };
     let conn = control::connect(&endpoint, hello).await?;
