@@ -154,13 +154,25 @@ impl Workspace {
     /// Hook for actions that live in their own modules.
     pub(crate) fn perform_extra(
         &mut self,
-        _action: &str,
-        _args: &Value,
-        _target: &Target,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
+        action: &str,
+        args: &Value,
+        target: &Target,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> Option<crate::actions::Outcome> {
-        None
+        type Perform = fn(&mut Workspace, &str, &Value, &Target, &mut Window, &mut Context<Workspace>) -> Option<crate::actions::Outcome>;
+        const MODULES: &[Perform] = &[
+            crate::find::perform,
+            crate::links::perform,
+            crate::activity::perform,
+            crate::layers::perform,
+            crate::transfer::perform,
+            crate::theme::perform,
+            crate::server::perform,
+            crate::input::perform,
+            crate::graphics::perform,
+        ];
+        MODULES.iter().find_map(|perform| perform(self, action, args, target, window, cx))
     }
 
     /// Every key press passes here first: the palette takes it while open,
