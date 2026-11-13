@@ -604,6 +604,7 @@ pub const DEFAULT_BINDINGS: &[(&str, &str, &str)] = &[
     ("ctrl+-", "client.font.decrease", ""),
     ("ctrl+0", "client.font.reset", ""),
     ("ctrl+shift+b", "client.sidebar.toggle", ""),
+    ("ctrl+shift+[Period]", "client.sidebar.activity.toggle", ""),
     ("ctrl+shift+r", "client.reconnect", ""),
     ("ctrl+shift+q", "client.quit", ""),
 ];

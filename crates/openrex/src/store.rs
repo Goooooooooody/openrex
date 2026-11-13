@@ -74,6 +74,8 @@ pub struct Store {
     pub notice: Option<String>,
     /// Hosts, Tailscale, and the server OpenRex started with.
     pub server: crate::server::ServerState,
+    /// Every terminal's title and what its programs are doing.
+    pub activity: crate::activity::Tracker,
     control: Option<Control>,
     fetching: HashSet<String>,
     refetch: HashSet<String>,
@@ -111,6 +113,7 @@ impl Store {
             perform_queue: Vec::new(),
             notice: None,
             server: Default::default(),
+            activity: Default::default(),
             control: None,
             fetching: HashSet::new(),
             refetch: HashSet::new(),
@@ -151,6 +154,7 @@ impl Store {
         self.status = Status::Connected;
         self.client_id = boot["client_id"].as_str().map(str::to_string);
         self.sessions = parse_sessions(&boot["attach_all"]["sessions"]);
+        crate::activity::bootstrap(self, cx);
         let selected = &boot["selected_session"];
         if let Ok(view) = serde_json::from_value::<SessionView>(selected["view"].clone()) {
             if let Some(id) = view.session_id.clone() {
@@ -265,11 +269,13 @@ impl Store {
             "block_closed" => {
                 if let Some(block_id) = p["block_id"].as_str() {
                     self.panes.remove(block_id);
+                    self.activity.forget(block_id);
                 }
             }
             "block_event" => {
                 let Some(block_id) = p["block_id"].as_str() else { return };
                 let payload = &p["payload"];
+                self.activity.on_event(session_id, block_id, p["name"].as_str().unwrap_or(""), payload);
                 match p["name"].as_str().unwrap_or("") {
                     "title_changed" => {
                         let title = payload["title"].as_str().unwrap_or("").to_string();
@@ -309,6 +315,7 @@ impl Store {
     fn forget_session(&mut self, id: &str, cx: &mut Context<Self>) {
         self.sessions.retain(|s| s.id != id);
         self.views.remove(id);
+        self.activity.forget_session(id);
         self.panes.retain(|_, pane| pane.read(cx).session_id != id);
         if self.current.as_deref() == Some(id) {
             self.current = None;
@@ -390,6 +397,7 @@ impl Store {
     fn apply_view(&mut self, view: SessionView, cx: &mut Context<Self>) {
         let Some(session_id) = view.session_id.clone() else { return };
         let before = self.views.get(&session_id).and_then(focused_block).map(str::to_string);
+        crate::activity::on_view(self, &view, cx);
 
         // A pane for every terminal in the window the session shows.
         if let Some(window) = active_window(&view) {
