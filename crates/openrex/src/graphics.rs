@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use ghostty_vt::Terminal;
 use ghostty_vt::kitty::graphics::{ImageFormat, PlacementIterator, RustPngDecoder, set_png_decoder};
-use gpui::{Bounds, ContentMask, Context, Corners, Pixels, Point, RenderImage, Window, point, px, size};
+use gpui::{App, Bounds, ContentMask, Context, Corners, Pixels, Point, RenderImage, Window, point, px, size};
 use serde_json::Value;
 
 use crate::actions::{Outcome, Target};
@@ -161,21 +161,24 @@ pub fn placements(term: &Terminal) -> Vec<Placement> {
 }
 
 /// The size of the terminal's cells in its own pixels: what the program was
-/// told, which is what the placements' pixel sizes are measured in.
+/// told, which is what the placements' pixel sizes are measured in. Zero
+/// when the terminal hasn't been told.
 pub fn cell_px(term: &Terminal) -> (f32, f32) {
     let (cols, rows) = (term.cols().unwrap_or(0), term.rows().unwrap_or(0));
     let (w, h) = (term.width_px().unwrap_or(0), term.height_px().unwrap_or(0));
-    let per = |px: u32, n: u16| if px == 0 || n == 0 { 1.0 } else { px as f32 / n as f32 };
+    let per = |px: u32, n: u16| if px == 0 || n == 0 { 0.0 } else { px as f32 / n as f32 };
     (per(w, cols), per(h, rows))
 }
 
 /// Where a placement is drawn, as (x, y, width, height) from the grid's
 /// top-left corner in the window's pixels. The terminal's pixels are scaled
 /// to the cells drawn here, so an image covers the same cells it covers on
-/// the server even when the server was told a different cell size.
+/// the server even when the server was told a different cell size. When the
+/// terminal's cell size isn't known, its pixels are drawn one to one.
 pub fn dest(p: &Placement, term_cell: (f32, f32), cell: (f32, f32)) -> (f32, f32, f32, f32) {
-    let sx = cell.0 / term_cell.0.max(1.0);
-    let sy = cell.1 / term_cell.1.max(1.0);
+    let scale = |ours: f32, theirs: f32| if theirs > 0.0 { ours / theirs } else { 1.0 };
+    let sx = scale(cell.0, term_cell.0);
+    let sy = scale(cell.1, term_cell.1);
     (
         p.col as f32 * cell.0 + p.x_offset as f32 * sx,
         p.row as f32 * cell.1 + p.y_offset as f32 * sy,
@@ -321,6 +324,14 @@ impl Images {
             }
         }
         layout
+    }
+
+    /// Lets go of every texture, in every window. For when the pane goes
+    /// away: the textures live in the window's atlas, not in the pane.
+    pub fn release(&mut self, cx: &mut App) {
+        for (_, image) in self.textures.drain() {
+            cx.drop_image(image, None);
+        }
     }
 }
 
@@ -474,8 +485,9 @@ mod tests {
         };
         // The server's cells are 10 by 20; these are 8 by 16.
         assert_eq!(dest(&p, (10.0, 20.0), (8.0, 16.0)), (28.0, -24.0, 32.0, 32.0));
-        // An unknown cell size counts as one pixel, and doesn't divide by zero.
-        assert_eq!(dest(&p, (0.0, 0.0), (8.0, 16.0)).2, 320.0);
+        // An unknown cell size draws the terminal's pixels one to one, and
+        // doesn't divide by zero.
+        assert_eq!(dest(&p, (0.0, 0.0), (8.0, 16.0)), (29.0, -22.0, 40.0, 40.0));
     }
 
     #[test]

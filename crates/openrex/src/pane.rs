@@ -134,6 +134,7 @@ impl Pane {
             }
         })
         .detach();
+        cx.on_release(|pane, cx| pane.images.release(cx)).detach();
         Pane {
             session_id,
             block_id,
