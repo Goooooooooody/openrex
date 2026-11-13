@@ -128,6 +128,7 @@ fn err(e: ghostty_vt::Error) -> anyhow::Error {
 
 impl Mirror {
     pub fn new(nonce: u64) -> Result<Self> {
+        crate::graphics::install_png_decoder();
         Ok(Mirror {
             stage: Stage::Snapshot(SnapshotFramer::new()),
             term: Terminal::new(Options::default()).map_err(err)?,
@@ -146,6 +147,12 @@ impl Mirror {
     /// True once the snapshot has arrived and the copy shows real content.
     pub fn is_live(&self) -> bool {
         matches!(self.stage, Stage::Live)
+    }
+
+    /// The engine's own terminal, for what the copy holds beyond text, such
+    /// as Kitty graphics images.
+    pub(crate) fn terminal(&self) -> &Terminal {
+        &self.term
     }
 
     /// Feeds stream bytes, in order.
