@@ -86,7 +86,7 @@ OpenRex is not made by or affiliated with Superlogical, the makers of Rex.
 ## Requirements
 
 - A Rex server. See the [Linux install page](https://www.superlogical.com/rex/docs/linux/installation).
-- Rust 1.90 or later.
+- A recent stable Rust.
 - Zig 0.17, which builds the terminal engine. `mise.toml` pins it.
 - Network access on the first build, which downloads Ghostty's source.
 
@@ -182,3 +182,22 @@ mise exec -- cargo test -p openrex --test live_server -- --ignored
 To drive the window without a keyboard, set `OPENREX_REPLAY` to a list of
 key presses, such as `ctrl-shift-d wait@1000 l s enter`. See
 `crates/openrex/src/replay.rs`.
+
+## Contributing
+
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) for how to
+build, test, and send a pull request, and the
+[Code of Conduct](CODE_OF_CONDUCT.md). Report security problems privately, as
+[SECURITY.md](SECURITY.md) describes.
+
+## License
+
+OpenRex is licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option. Unless you explicitly state otherwise, any contribution
+intentionally submitted for inclusion in OpenRex by you, as defined in the
+Apache-2.0 license, shall be dual licensed as above, without any additional
+terms or conditions.

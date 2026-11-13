@@ -2,6 +2,11 @@
 resolver = "3"
 members = ["crates/openrex","crates/openrex-proto"]
 
+[workspace.package]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Goooooooooody/openrex"
+homepage = "https://github.com/Goooooooooody/openrex"
+
 [profile.dev]
 opt-level = 1
 

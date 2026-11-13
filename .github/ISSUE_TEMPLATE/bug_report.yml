@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in OpenRex doesn't work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Screenshots help for drawing problems.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Split a pane with Ctrl+Shift+D
+        2. Run `htop` in the new pane
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: openrex
+    attributes:
+      label: OpenRex version or commit
+      placeholder: openrex --version, or the commit you built
+    validations:
+      required: true
+  - type: input
+    id: rex
+    attributes:
+      label: Rex server version
+      placeholder: rex version
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Distribution, desktop, and display server
+      placeholder: Arch Linux, Hyprland, Wayland
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Run with RUST_LOG=openrex=debug and paste anything relevant.
+      render: text
