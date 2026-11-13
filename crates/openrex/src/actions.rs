@@ -920,7 +920,7 @@ impl Workspace {
         crate::theme::remember("font_size", json!(size));
     }
 
-    fn open_path_input(&mut self, title: &str, action: &str, files: bool, cx: &mut Context<Self>) -> Outcome {
+    pub(crate) fn open_path_input(&mut self, title: &str, action: &str, files: bool, cx: &mut Context<Self>) -> Outcome {
         let Some(view) = self.view(cx) else { return fail("conflict", "no session is open") };
         let Some(block) = focused_block(&view).map(str::to_string) else { return fail("conflict", "no pane is focused") };
         let start = self.focused_cwd(cx).map(|c| if c.ends_with('/') { c } else { c + "/" }).unwrap_or_else(|| "~/".into());

@@ -350,7 +350,9 @@ impl Pane {
                 mirror.select_to(col, row);
                 cx.notify();
             }
-        } else if ev.pressed_button.is_some() && self.wants_mouse(&ev.modifiers) {
+        } else if ev.pressed_button.is_some() && !cx.has_active_drag() && self.wants_mouse(&ev.modifiers) {
+            // Files dragged from the desktop arrive as a drag with the left
+            // button held; they're for the pane, not the program.
             self.send_mouse("motion", ev.pressed_button, ev.position, &ev.modifiers);
         }
     }
@@ -363,7 +365,7 @@ impl Pane {
                 cx.write_to_primary(ClipboardItem::new_string(text));
             }
             cx.notify();
-        } else if self.wants_mouse(&ev.modifiers) {
+        } else if !cx.has_active_drag() && self.wants_mouse(&ev.modifiers) {
             self.send_mouse("release", Some(ev.button), ev.position, &ev.modifiers);
         }
     }
