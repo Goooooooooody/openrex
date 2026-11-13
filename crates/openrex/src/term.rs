@@ -20,6 +20,8 @@ use ghostty_vt::Terminal;
 use openrex_proto::{Framed, RexMessage, SnapshotFramer, StreamItem, StreamSplitter};
 use serde_json::Value;
 
+use crate::links::{Hyperlink, hyperlink_at, push_hyperlink};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
@@ -66,6 +68,10 @@ pub struct BgSpan {
 pub struct Line {
     pub spans: Vec<Span>,
     pub bgs: Vec<BgSpan>,
+    /// Cells a program made into links with OSC 8.
+    pub links: Vec<Hyperlink>,
+    /// The row's text goes on in the next row: the terminal wrapped it.
+    pub wrapped: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -376,6 +382,9 @@ impl Mirror {
                 if full || row.dirty().unwrap_or(true) {
                     let mut cells = self.cell_iter.update(row).map_err(err)?;
                     let mut line = Line::default();
+                    let raw_row = row.raw_row().ok();
+                    line.wrapped = raw_row.and_then(|r| r.is_wrapped().ok()).unwrap_or(false);
+                    let has_links = raw_row.and_then(|r| r.has_hyperlink().ok()).unwrap_or(false);
                     let mut x: u16 = 0;
                     while let Some(cell) = cells.next() {
                         let col = x;
@@ -385,6 +394,10 @@ impl Mirror {
                             continue;
                         }
                         let width: u16 = if wide == CellWide::Wide { 2 } else { 1 };
+                        let linked = has_links && cell.raw_cell().and_then(|c| c.has_hyperlink()).unwrap_or(false);
+                        if let Some(uri) = linked.then(|| hyperlink_at(&self.term, col, y as u32)).flatten() {
+                            push_hyperlink(&mut line.links, col, width, uri);
+                        }
 
                         let style = if cell.has_styling().unwrap_or(false) {
                             cell.style().unwrap_or_default()

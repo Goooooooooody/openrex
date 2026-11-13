@@ -857,6 +857,7 @@ impl Render for Workspace {
             .on_mouse_move(cx.listener(Self::on_drag_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_drag_end))
             .capture_key_down(cx.listener(Self::on_key_capture))
+            .on_modifiers_changed(cx.listener(crate::links::on_modifiers_changed))
             .child(
                 div()
                     .flex()
