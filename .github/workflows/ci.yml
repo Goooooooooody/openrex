@@ -22,7 +22,7 @@ jobs:
     name: Build, test, lint
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install system libraries
         run: |
@@ -34,7 +34,7 @@ jobs:
             libfontconfig-dev libfreetype-dev libvulkan-dev
 
       # Zig, pinned in mise.toml, builds Ghostty's terminal engine.
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v4
 
       # Ghostty's build script runs Zig from its own directory, where the mise
       # shim can't see mise.toml, so name the installed binary directly.
