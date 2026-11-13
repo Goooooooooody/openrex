@@ -106,8 +106,9 @@ pub fn link_at(lines: &[Rc<Line>], cols: u16, col: u16, row: u16) -> Option<Foun
     let line = lines.get(r)?;
     let rows = wrapped_rows(lines, r);
     if let Some(hit) = line.links.iter().find(|l| col >= l.col && col < l.col + l.width) {
+        let uri = hit.uri.as_str();
         let cells = rows
-            .flat_map(|r| lines[r].links.iter().filter(|l| l.uri == hit.uri).map(move |l| (r, l)))
+            .flat_map(|r| lines[r].links.iter().filter(move |l| l.uri == uri).map(move |l| (r, l)))
             .map(|(r, l)| Segment { row: r as u16, col: l.col, width: l.width })
             .collect();
         return Some(Found { uri: hit.uri.clone(), cells });
@@ -337,7 +338,10 @@ impl PaneLinks {
             }
             None => self.lines.clear(),
         }
-        let found = (window.modifiers().control && bounds.contains(&window.mouse_position()))
+        // When the mouse leaves the window, gpui keeps its last position but
+        // marks the window unhovered and draws it again.
+        let over = window.is_window_hovered() && bounds.contains(&window.mouse_position());
+        let found = (window.modifiers().control && over)
             .then_some(mouse_cell)
             .flatten()
             .and_then(|at| self.find(at));
