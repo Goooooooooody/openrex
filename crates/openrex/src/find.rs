@@ -698,6 +698,24 @@ mod tests {
     }
 
     #[test]
+    fn steps_through_many_matches_in_order() {
+        let text: String = (1..=40).map(|i| format!("line {i} needle\r\n")).collect();
+        let mut m = Mirror::new(1).unwrap();
+        m.feed(b"\x1b[H");
+        m.feed(b"\x1b_rex1;1;{\"type\":\"resize\",\"cols\":80,\"rows\":90}\x1b\\");
+        m.feed(text.as_bytes());
+        let mut f = Finder { shown: true, ..Finder::default() };
+        assert!(f.set_needle(&mut m, "needle"));
+        let row = |f: &Finder, m: &Mirror| f.marks(m).into_iter().find(|k| k.current).map(|k| k.row);
+        assert_eq!(f.count.current, Some(1));
+        assert_eq!(row(&f, &m), Some(39));
+        f.step(&mut m, true);
+        assert_eq!((f.count.current, row(&f, &m)), (Some(2), Some(38)));
+        f.step(&mut m, true);
+        assert_eq!((f.count.current, row(&f, &m)), (Some(3), Some(37)));
+    }
+
+    #[test]
     fn counts_and_steps_through_matches_newest_first() {
         let mut m = live("one foo\r\ntwo foo\r\nthree FOO\r\n");
         let mut f = Finder { shown: true, ..Finder::default() };

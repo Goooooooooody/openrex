@@ -11,22 +11,53 @@ OpenRex is not made by or affiliated with Superlogical, the makers of Rex.
 
 ## What works
 
-- Sessions in a sidebar: switch, create, and end them.
-- Windows as tabs: create, close, and switch.
-- Panes: split right or down, close, zoom, move focus, and drag the border
-  between two panes to resize them.
-- Terminals drawn with Ghostty's terminal engine, the one the server uses, so
-  the screen, scrollback, colors, wide characters, and full-screen programs
-  match the server exactly.
-- Keyboard input, paste, and mouse and wheel reporting for programs that ask
-  for them.
-- Local scrollback, selection by dragging, double click (word) and triple
-  click (line), copy, and middle-click paste.
-- Titles, desktop notifications, and clipboard writes from programs.
-
-Not yet: input methods and dead keys, images (Kitty graphics), clickable
-links, search, the server's Lua key bindings, themes, file upload and
-download, floating-layer management, and a host list for remote servers.
+- **Sessions, tabs, and panes.** Sessions in a sidebar, windows as tabs, and
+  panes you can split in any direction, resize by dragging or by key, swap,
+  balance, zoom, detach and bring back, and move to another tab. New panes
+  start in the directory the focused terminal last reported. Double-click a
+  tab or session to rename it; middle-click a tab to close it.
+- **Floating panes.** Float a pane or open a new floating one, then move it by
+  its title bar, resize it from its corner, minimize it to a chip in the tab
+  bar, dock it back into the layout, or close it.
+- **Terminals drawn with Ghostty's engine**, the one the server uses, so the
+  screen, scrollback, colors, wide characters, and full-screen programs match
+  the server exactly. Every underline style (single, double, curly, dotted,
+  dashed), underline colors, strikethrough, and overline. **Kitty graphics**
+  images.
+- **Find** in the screen and scrollback, with every match highlighted.
+- **Links**: web links and OSC 8 hyperlinks open with Ctrl+click.
+- **Activity**: what programs report (OSC 7501 program status, OSC 9;4
+  progress), bells, and exits show on tabs and sessions, with an activity
+  list in the sidebar and in **View Activity…**. Background tabs show their
+  terminals' real titles.
+- **Keys and actions the way Rex does them.** OpenRex declares its actions
+  under Rex.app's names and follows the key bindings in your Rex
+  configuration file (`init.lua`): bindings to actions, key sequences such as
+  `ctrl+b>c`, key modes, and Lua functions. Configuration-file actions and
+  block actions run from keys and the palette.
+- **A command palette** (Ctrl+Shift+P) with every action and its keys. It is
+  also how you switch sessions, go to any session, tab, or pane, rename
+  things, and type paths, with completion from the terminal's machine.
+- **Scriptable from outside.** Other clients and scripts can ask OpenRex to
+  perform its actions: `rex -C <client> do pane.split direction=down`.
+- **Files**: drop files on a pane, or use **Upload Files…**, to send them to
+  the terminal's machine and type their paths; **Download File…** saves a file
+  from it to `~/Downloads`.
+- **Themes**: ten built-in themes plus every Ghostty theme file installed,
+  applied to the terminals and to the window around them. The theme and font
+  are saved in `~/.config/openrex/settings.json`.
+- **Input methods, dead keys, and compose**, with the composition drawn at
+  the cursor.
+- **Shell prompts**: jump to the previous or next prompt in the scrollback
+  (needs shell integration that marks prompts, OSC 133).
+- **The server**: **Rex Diagnostics** shows the server's version, status,
+  identity, configuration problems, and connected clients. Turn built-in
+  Tailscale on and off, and sign it in. Add, remove, and switch between the
+  server's hosts, including servers reached over HTTPS.
+- Keyboard input, paste, mouse and wheel reporting, local scrollback,
+  selection (drag, double click for a word, triple click for a line), copy,
+  middle-click paste, titles, desktop notifications, and clipboard writes from
+  programs, even while the window isn't focused.
 
 ## Requirements
 
@@ -56,23 +87,38 @@ openrex devbox:7297
 
 ## Keys
 
+These are the defaults. Your Rex configuration file can change any of them
+with `rex.bind`, using the action names that **Command Palette…** and
+`rex -C <client> actions` list.
+
 | Key | Action |
 | --- | --- |
-| Ctrl+Shift+N | New session |
+| Ctrl+Shift+P | Command palette |
+| Ctrl+Shift+N, Ctrl+Shift+K | New session, change session |
+| Ctrl+Shift+O | Go to anything |
 | Ctrl+Shift+T | New tab |
-| Ctrl+Shift+D | Split right |
-| Ctrl+Shift+E | Split down |
+| Ctrl+Tab, Ctrl+Shift+Tab | Next tab, previous tab |
+| Alt+1 … Alt+9 | Go to tab |
+| Ctrl+Shift+PageUp, Ctrl+Shift+PageDown | Move tab |
+| Ctrl+Shift+D, Ctrl+Shift+E | Split right, split down |
 | Ctrl+Shift+W | Close pane |
 | Ctrl+Shift+Enter | Zoom pane |
 | Ctrl+Alt+Arrow | Focus the pane in that direction |
-| Ctrl+Tab, Ctrl+Shift+Tab | Next tab, previous tab |
-| Ctrl+Shift+C, Ctrl+Shift+V | Copy, paste |
+| Ctrl+Alt+Shift+Arrow | Swap with the pane in that direction |
+| Ctrl+Alt+Enter | Float or dock the pane |
+| Ctrl+Alt+M, Ctrl+Alt+Shift+Enter | Minimize floating pane, all floating panes |
+| Ctrl+Shift+C, Ctrl+Shift+V, Ctrl+Shift+A | Copy, paste, select all |
+| Ctrl+Shift+F | Find |
 | Shift+PageUp, Shift+PageDown | Scroll back, scroll forward |
+| Ctrl+Shift+Up, Ctrl+Shift+Down | Previous prompt, next prompt |
+| Ctrl+Shift+G | Go to directory (new tab) |
+| Ctrl+=, Ctrl+-, Ctrl+0 | Font size |
+| Ctrl+Shift+B, Ctrl+Shift+. | Toggle sidebar, toggle activity |
 | Ctrl+Shift+R | Reconnect |
-| Ctrl+Shift+Q | Quit |
+| Ctrl+Shift+Q | Quit (the server keeps everything running) |
 
 Every other key goes to the terminal. Hold Shift to select with the mouse
-while a program is using it.
+while a program is using it; hold Ctrl to open links.
 
 ## How it fits together
 
@@ -84,6 +130,11 @@ while a program is using it.
   and reacts to server events. `term` keeps a local copy of each terminal by
   feeding the server's snapshot and output to Ghostty's engine. `pane` draws
   a terminal and sends its input. `workspace` is the window.
+- `keymap` reads keys in Rex's spelling and resolves bindings, sequences, and
+  modes; `actions` performs every action, whether a key, the palette
+  (`palette`), or another client asked for it. Each larger feature has its
+  own module: `find`, `links`, `activity`, `layers`, `transfer`, `theme`,
+  `server`, `input`, and `graphics`.
 
 The server describes its API at `GET /llms.txt` on its socket:
 
