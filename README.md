@@ -1,3 +1,8 @@
+# Notice
+Community contributions are welcome and encouraged, this is intended as a canvas, not a finished product.
+
+If you fork it or adopt it into your own thing, please credit the original and push fixes upstream :) 
+
 # OpenRex
 
 A Linux client for the [Rex](https://www.superlogical.com/rex/docs) terminal
