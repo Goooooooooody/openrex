@@ -39,9 +39,9 @@ pub struct Pane {
     pub cwd: Option<String>,
     pub exited: Option<i64>,
     pub focus: FocusHandle,
-    control: Control,
+    pub(crate) control: Control,
     settings: Settings,
-    mirror: Option<Mirror>,
+    pub(crate) mirror: Option<Mirror>,
     error: Option<String>,
     /// Where the grid's top-left corner was last drawn.
     origin: Point<Pixels>,
@@ -53,6 +53,8 @@ pub struct Pane {
     copy_on_release: bool,
     reported_cell: Option<(i32, i32)>,
     scroll_remainder: f32,
+    /// Input method state: the composition in progress and the cursor.
+    pub(crate) ime: crate::input::Ime,
     _stream: Task<()>,
 }
 
@@ -148,6 +150,7 @@ impl Pane {
             copy_on_release: false,
             reported_cell: None,
             scroll_remainder: 0.0,
+            ime: Default::default(),
             _stream: stream,
         }
     }
@@ -279,7 +282,13 @@ impl Pane {
     }
 
     fn on_key_down(&mut self, ev: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if self.ime.continues_composition(&ev.keystroke) {
+            return;
+        }
         let Some(key) = rex_key(&ev.keystroke, ev.is_held) else { return };
+        // A key press ends a dead key's composition. The key that completes
+        // it carries the composed text itself.
+        self.ime.clear();
         if let Some(mirror) = &mut self.mirror {
             mirror.scroll_to_bottom();
             mirror.clear_selection();
@@ -708,6 +717,7 @@ fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut 
 impl Render for Pane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
+        let (input_entity, focus) = (entity.clone(), self.focus.clone());
         div()
             .size_full()
             .track_focus(&self.focus)
@@ -723,8 +733,17 @@ impl Render for Pane {
             .on_scroll_wheel(cx.listener(Self::on_scroll))
             .child(
                 canvas(
-                    move |bounds, window, cx| entity.update(cx, |pane, _| pane.layout(bounds, window)),
-                    paint,
+                    move |bounds, window, cx| {
+                        entity.update(cx, |pane, _| {
+                            let data = pane.layout(bounds, window);
+                            let overlay = pane.ime.prepaint(data.frame.as_ref(), data.origin, &data.metrics, &data.font);
+                            (data, overlay)
+                        })
+                    },
+                    move |bounds, (data, overlay), window, cx| {
+                        paint(bounds, data, window, cx);
+                        crate::input::paint(&input_entity, &focus, bounds, overlay, window, cx);
+                    },
                 )
                 .size_full(),
             )
