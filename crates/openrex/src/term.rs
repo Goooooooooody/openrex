@@ -156,7 +156,7 @@ impl Mirror {
     }
 
     /// The engine's own terminal, for what the copy holds beyond text, such
-    /// as Kitty graphics images.
+    /// as Kitty graphics images and find's search.
     pub(crate) fn terminal(&self) -> &Terminal {
         &self.term
     }
@@ -345,11 +345,6 @@ impl Mirror {
 
     pub fn has_selection(&self) -> bool {
         self.has_selection
-    }
-
-    /// The engine's terminal, for features that read it, such as find.
-    pub(crate) fn terminal(&self) -> &Terminal {
-        &self.term
     }
 
     /// Rebuilds every line on the next frame, after something other than
