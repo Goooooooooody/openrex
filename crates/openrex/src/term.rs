@@ -109,7 +109,7 @@ enum Stage {
 
 pub struct Mirror {
     stage: Stage,
-    term: Terminal,
+    pub(crate) term: Terminal,
     splitter: StreamSplitter,
     render: RenderState,
     row_iter: RowIterator,

@@ -659,7 +659,8 @@ impl Workspace {
                             .border_color(t.border)
                             .text_color(color)
                             .child(SharedString::from(query))
-                            .child(div().w(px(2.0)).h(px(16.0)).ml(px(1.0)).bg(t.accent)),
+                            .child(div().w(px(2.0)).h(px(16.0)).ml(px(1.0)).bg(t.accent))
+                            .child(crate::input::palette_input(cx.entity())),
                     )
                     .child(list),
             )
