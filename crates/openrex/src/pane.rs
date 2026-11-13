@@ -58,6 +58,7 @@ pub struct Pane {
     images: crate::graphics::Images,
     /// Input method state: the composition in progress and the cursor.
     pub(crate) ime: crate::input::Ime,
+    pub(crate) links: crate::links::PaneLinks,
     _stream: Task<()>,
 }
 
@@ -69,6 +70,7 @@ struct PaintData {
     focused: bool,
     note: Option<String>,
     images: crate::graphics::Layout,
+    link: Option<crate::links::Hover>,
 }
 
 impl Pane {
@@ -157,6 +159,7 @@ impl Pane {
             scroll_remainder: 0.0,
             images: Default::default(),
             ime: Default::default(),
+            links: Default::default(),
             _stream: stream,
         }
     }
@@ -315,6 +318,10 @@ impl Pane {
                 json!({"session_id": self.session_id, "block_id": self.block_id}),
             );
         }
+        if self.links.on_mouse_down(ev, self.cell_at(ev.position)) {
+            cx.notify();
+            return;
+        }
         if self.wants_mouse(&ev.modifiers) {
             self.reported_cell = None;
             self.send_mouse("press", Some(ev.button), ev.position, &ev.modifiers);
@@ -345,6 +352,12 @@ impl Pane {
     }
 
     fn on_mouse_move(&mut self, ev: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if self.links.on_mouse_move(ev) {
+            cx.notify();
+        }
+        if self.links.holds_press() {
+            return;
+        }
         if self.selecting {
             if let (Some((col, row)), Some(mirror)) = (self.cell_at(ev.position), &mut self.mirror) {
                 mirror.select_to(col, row);
@@ -358,6 +371,9 @@ impl Pane {
     }
 
     fn on_mouse_up(&mut self, ev: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if self.links.on_mouse_up(ev.button) {
+            return;
+        }
         if self.selecting || self.copy_on_release {
             self.selecting = false;
             self.copy_on_release = false;
@@ -403,7 +419,7 @@ impl Pane {
 
     /// Measures the pane, asks the server for the size that fits, and reads
     /// what to draw.
-    fn layout(&mut self, bounds: Bounds<Pixels>, window: &mut Window) -> PaintData {
+    fn layout(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut Context<Self>) -> PaintData {
         let font = font(SharedString::from(self.settings.font_family.clone()));
         let font_size = px(self.settings.font_size);
         let text_system = window.text_system();
@@ -458,7 +474,9 @@ impl Pane {
             _ => None,
         };
         let images = self.images.layout(self.mirror.as_ref(), origin, &metrics, window);
-        PaintData { frame, metrics, origin, font, focused: self.focus.is_focused(window), note, images }
+        let mouse_cell = self.cell_at(window.mouse_position());
+        let link = self.links.layout(frame.as_ref(), bounds, mouse_cell, window, cx);
+        PaintData { frame, metrics, origin, font, focused: self.focus.is_focused(window), note, images, link }
     }
 }
 
@@ -621,7 +639,7 @@ fn styled(base: &Font, bold: bool, italic: bool) -> Font {
 }
 
 fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut App) {
-    let PaintData { frame, metrics, origin, font, focused, note, images } = data;
+    let PaintData { frame, metrics, origin, font, focused, note, images, link } = data;
     let Metrics { cell_w, line_h, font_size, .. } = metrics;
     let bg = frame.as_ref().map(|f| hsla(f.bg)).unwrap_or_else(|| hsla(Rgb(0x16, 0x16, 0x1e)));
     let fg = frame.as_ref().map(|f| hsla(f.fg)).unwrap_or_else(|| hsla(Rgb(0xc0, 0xca, 0xf5)));
@@ -676,6 +694,9 @@ fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut 
                 }
             }
             images.paint(Layer::AboveText, window);
+            if let Some(link) = &link {
+                crate::links::paint_hover(link, frame, origin, &metrics, window);
+            }
 
             if let Some(cursor) = frame.cursor.filter(|c| (c.row as usize) < frame.lines.len()) {
                 let top = origin.y + line_h * cursor.row as f32;
@@ -751,8 +772,8 @@ impl Render for Pane {
             .child(
                 canvas(
                     move |bounds, window, cx| {
-                        entity.update(cx, |pane, _| {
-                            let data = pane.layout(bounds, window);
+                        entity.update(cx, |pane, cx| {
+                            let data = pane.layout(bounds, window, cx);
                             let overlay = pane.ime.prepaint(data.frame.as_ref(), data.origin, &data.metrics, &data.font, data.focused);
                             (data, overlay)
                         })
