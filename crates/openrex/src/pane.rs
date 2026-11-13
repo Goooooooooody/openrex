@@ -59,6 +59,8 @@ pub struct Pane {
     /// Input method state: the composition in progress and the cursor.
     pub(crate) ime: crate::input::Ime,
     pub(crate) links: crate::links::PaneLinks,
+    /// The search the find bar runs in this terminal.
+    pub(crate) find: Option<crate::find::Finder>,
     _stream: Task<()>,
 }
 
@@ -71,6 +73,7 @@ struct PaintData {
     note: Option<String>,
     images: crate::graphics::Layout,
     link: Option<crate::links::Hover>,
+    marks: Vec<crate::find::Mark>,
 }
 
 impl Pane {
@@ -160,6 +163,7 @@ impl Pane {
             images: Default::default(),
             ime: Default::default(),
             links: Default::default(),
+            find: None,
             _stream: stream,
         }
     }
@@ -460,6 +464,7 @@ impl Pane {
             }
         }
 
+        let marks = crate::find::marks(self, window);
         let frame = self.mirror.as_mut().filter(|m| m.is_live()).and_then(|m| match m.frame() {
             Ok(frame) => Some(frame),
             Err(e) => {
@@ -476,7 +481,7 @@ impl Pane {
         let images = self.images.layout(self.mirror.as_ref(), origin, &metrics, window);
         let mouse_cell = self.cell_at(window.mouse_position());
         let link = self.links.layout(frame.as_ref(), bounds, mouse_cell, window, cx);
-        PaintData { frame, metrics, origin, font, focused: self.focus.is_focused(window), note, images, link }
+        PaintData { frame, metrics, origin, font, focused: self.focus.is_focused(window), note, images, link, marks }
     }
 }
 
@@ -639,7 +644,7 @@ fn styled(base: &Font, bold: bool, italic: bool) -> Font {
 }
 
 fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut App) {
-    let PaintData { frame, metrics, origin, font, focused, note, images, link } = data;
+    let PaintData { frame, metrics, origin, font, focused, note, images, link, marks } = data;
     let Metrics { cell_w, line_h, font_size, .. } = metrics;
     let bg = frame.as_ref().map(|f| hsla(f.bg)).unwrap_or_else(|| hsla(Rgb(0x16, 0x16, 0x1e)));
     let fg = frame.as_ref().map(|f| hsla(f.fg)).unwrap_or_else(|| hsla(Rgb(0xc0, 0xca, 0xf5)));
@@ -665,6 +670,7 @@ fn paint(bounds: Bounds<Pixels>, data: PaintData, window: &mut Window, cx: &mut 
             images.paint(Layer::BelowText, window);
             for (row, line) in frame.lines.iter().enumerate() {
                 let top = origin.y + line_h * row as f32;
+                crate::find::paint_row(&marks, row, origin.x, cell_w, top, line_h, window);
                 for span in &line.spans {
                     let mut color = hsla(span.fg);
                     if span.faint {
