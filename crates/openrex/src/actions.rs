@@ -444,13 +444,6 @@ impl Workspace {
                 let amount = args.get("amount").and_then(Value::as_f64).unwrap_or(5.0) as f32 / 100.0;
                 self.resize_pane(direction, amount, cx)
             }
-            "pane.float" => self.toggle_float(cx),
-            "pane.new_floating" => self.session(
-                cx,
-                "session.new_layer",
-                json!({"bounds": [0.15, 0.12, 0.7, 0.7], "layout": crate::store::shell_layout_in(self.focused_cwd(cx)), "focus": true}),
-            ),
-            "pane.minimize_floating" | "pane.minimize_all_floating" => self.minimize_floating(action == "pane.minimize_all_floating", cx),
             "pane.detach" => {
                 let Some(block) = self.target_block(&target, cx) else { return fail("conflict", "no pane is focused") };
                 self.session(cx, "session.detach_block", json!({"block_id": block}))
@@ -776,52 +769,6 @@ impl Workspace {
         let ratio = if matches!(direction, "left" | "up") { ratio - amount } else { ratio + amount };
         self.store.update(cx, |s, cx| s.resize_split(want, &before, &after, ratio, cx));
         done()
-    }
-
-    fn toggle_float(&mut self, cx: &mut Context<Self>) -> Outcome {
-        let Some(view) = self.view(cx) else { return done() };
-        let Some(win) = active_window(&view) else { return done() };
-        let Some(block) = win.focused_block_id.clone() else { return done() };
-        let floating = win.layers.iter().any(|l| l.is_floating() && l.blocks.iter().any(|b| b.block_id.as_deref() == Some(block.as_str())));
-        if floating {
-            // Dock it beside the first tiled pane.
-            let anchor = tiled_leaves(win).into_iter().map(|(id, _)| id).find(|id| *id != block);
-            match anchor {
-                Some(anchor) => self.session(cx, "session.move_block", json!({"block_id": block, "anchor_block_id": anchor, "direction": "horizontal", "side": "after"})),
-                None => fail("conflict", "there is no tiled pane to dock beside"),
-            }
-        } else {
-            self.session(cx, "session.float_block", json!({"block_id": block, "bounds": [0.15, 0.12, 0.7, 0.7]}))
-        }
-    }
-
-    fn minimize_floating(&mut self, all: bool, cx: &mut Context<Self>) -> Outcome {
-        let Some(view) = self.view(cx) else { return done() };
-        let Some(win) = active_window(&view) else { return done() };
-        let focused = win.focused_block_id.clone();
-        let floating: Vec<_> = win.layers.iter().filter(|l| l.is_floating()).collect();
-        if floating.is_empty() {
-            return done();
-        }
-        if all {
-            // Minimize every one, or restore them all when all are minimized.
-            let restore = floating.iter().all(|l| l.is_minimized());
-            for l in floating {
-                if let Some(id) = &l.layer_id {
-                    self.session(cx, "session.set_layer_state", json!({"layer_id": id, "state": if restore { "normal" } else { "minimized" }}))?;
-                }
-            }
-            return done();
-        }
-        let holds_focus = |l: &&openrex_proto::types::Layer| l.blocks.iter().any(|b| b.block_id == focused);
-        let layer = floating.iter().find(|l| holds_focus(l) && !l.is_minimized()).or_else(|| floating.iter().rev().find(|l| l.is_minimized()));
-        let Some(layer) = layer else { return done() };
-        let Some(id) = layer.layer_id.clone() else { return done() };
-        if layer.is_minimized() {
-            self.session(cx, "session.set_layer_state", json!({"layer_id": id, "state": "normal", "focus": true}))
-        } else {
-            self.session(cx, "session.set_layer_state", json!({"layer_id": id, "state": "minimized"}))
-        }
     }
 
     fn attach_detached(&mut self, block: Option<&str>, cx: &mut Context<Self>) -> Outcome {
