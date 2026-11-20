@@ -1064,6 +1064,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "constant_time_eq"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9eb6feb175df65d0a3ccd3e73484e940d0ac664e8034f0519fd49a93db3071d9"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2156,9 +2165,9 @@ dependencies = [
 
 [[package]]
 name = "ghostty-vt"
-version = "0.8.0+ghostty.1.4.0-main.83fb956"
+version = "0.9.0+ghostty-vt.1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a293a2cc510ce39728e04c35e0dd7797bacb60944fa26c2d3d5f7297529c50a4"
+checksum = "5f231031b00f8d9ccc373eb692877f4ac1df715daac4fc7784019cfd12fa4fcf"
 dependencies = [
  "bitflags 2.13.2",
  "dirs 6.0.0",
@@ -2169,14 +2178,15 @@ dependencies = [
 
 [[package]]
 name = "ghostty-vt-sys"
-version = "0.8.0+ghostty.1.4.0-main.83fb956"
+version = "0.9.0+ghostty-vt.1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9faa3284f0f76ff399f3728ea253f3b9bb2f9ebb6d512fe87955fe2dfaa0207d"
+checksum = "c76694a0234d400d12615c0c6ee95977437b42621ac431ad4e2102ec98ce9f66"
 dependencies = [
  "flate2",
  "sha2 0.10.9",
  "tar",
  "ureq",
+ "zip",
 ]
 
 [[package]]
@@ -6083,6 +6093,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "typed-path"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
+
+[[package]]
 name = "typeid"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7626,6 +7642,25 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.10",
+]
+
+[[package]]
+name = "zip"
+version = "9.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "721c8158b9503b2660291ad3056a20f722deaeed21bb908a9a363d7e17b34f0e"
+dependencies = [
+ "constant_time_eq",
+ "crc32fast",
+ "flate2",
+ "getrandom 0.4.3",
+ "indexmap",
+ "libc",
+ "memchr",
+ "nix 0.31.3",
+ "typed-path",
+ "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]
